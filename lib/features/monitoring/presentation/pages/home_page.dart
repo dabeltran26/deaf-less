@@ -5,6 +5,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:deaf_less/core/preferences/sound_preferences.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
@@ -126,6 +127,35 @@ class HomePage extends StatelessWidget {
                     final next = !isRecording;
                     final cubit = context.read<MonitoringCubit>();
                     if (next) {
+                      // Verificar permiso de micrófono antes de iniciar
+                      var status = await Permission.microphone.status;
+                      if (status.isDenied ||
+                          status.isRestricted ||
+                          status.isLimited) {
+                        status = await Permission.microphone.request();
+                      }
+                      if (status.isPermanentlyDenied) {
+                        // ignore: use_build_context_synchronously
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Permiso de micrófono denegado permanentemente. Ve a Ajustes para habilitarlo.',
+                            ),
+                          ),
+                        );
+                        openAppSettings();
+                        return; // No continuar
+                      }
+                      if (!status.isGranted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Necesitamos el permiso de micrófono para empezar a escuchar.',
+                            ),
+                          ),
+                        );
+                        return; // No continuar
+                      }
                       await cubit.start();
                     } else {
                       await cubit.stop();

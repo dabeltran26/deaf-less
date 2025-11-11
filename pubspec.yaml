@@ -18,6 +18,7 @@ dependencies:
   get_it: ^7.7.0
   hive: ^2.2.3
   hive_flutter: ^1.1.0
+  permission_handler: ^11.3.1
 
 dev_dependencies:
   flutter_test:
@@ -29,3 +30,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  # iOS: add NSMicrophoneUsageDescription in Info.plist
+  # Android: ensure android.permission.RECORD_AUDIO is declared in AndroidManifest.xml
