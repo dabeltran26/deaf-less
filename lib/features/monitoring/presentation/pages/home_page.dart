@@ -124,6 +124,12 @@ class HomePage extends StatelessWidget {
                   ),
                   onPressed: () async {
                     final next = !isRecording;
+                    final cubit = context.read<MonitoringCubit>();
+                    if (next) {
+                      await cubit.start();
+                    } else {
+                      await cubit.stop();
+                    }
                     await box.put(PrefKeys.recordingActive, next);
                   },
                   style: ElevatedButton.styleFrom(
