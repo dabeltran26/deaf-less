@@ -18,6 +18,7 @@ class MonitoringCubit extends Cubit<MonitoringState> {
       );
 
   StreamSubscription<double>? _sub;
+  DateTime? _lastNotifAt;
 
   Future<void> start() async {
     if (state.status.isActive) return;
@@ -27,12 +28,25 @@ class MonitoringCubit extends Cubit<MonitoringState> {
       emit(
         MonitoringState(state.status.copyWith(isActive: true, lastEventDb: db)),
       );
+      final now = DateTime.now();
+      if (_lastNotifAt == null ||
+          now.difference(_lastNotifAt!) > const Duration(seconds: 2)) {
+        _lastNotifAt = now;
+        AudioChannel.updateNotification(
+          'Nivel actual: ${db.toStringAsFixed(1)} dB',
+        );
+      }
     });
+    // Ensure initial notification
+    await AudioChannel.updateNotification('Escuchando...');
   }
 
   Future<void> stop() async {
     await AudioChannel.stop();
     await _sub?.cancel();
+    _lastNotifAt = null;
+    // Optionally inform stopped state
+    await AudioChannel.updateNotification('Monitoreo detenido');
     emit(MonitoringState(state.status.copyWith(isActive: false)));
   }
 

@@ -2,6 +2,8 @@ package com.example.deaf_less
 
 import android.os.Handler
 import android.os.Looper
+import android.content.Intent
+import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
@@ -25,10 +27,29 @@ class MainActivity : FlutterActivity() {
 				when (call.method) {
 					"startMonitoring" -> {
 						startMockStream()
+						// Start foreground service with persistent notification
+						val startIntent = Intent(this, MonitoringForegroundService::class.java).apply {
+							action = MonitoringForegroundService.ACTION_START
+							putExtra(MonitoringForegroundService.EXTRA_CONTENT, "Escuchando...")
+						}
+						ContextCompat.startForegroundService(this, startIntent)
 						result.success(true)
 					}
 					"stopMonitoring" -> {
 						stopMockStream()
+						val stopIntent = Intent(this, MonitoringForegroundService::class.java).apply {
+							action = MonitoringForegroundService.ACTION_STOP
+						}
+						startService(stopIntent)
+						result.success(true)
+					}
+					"updateNotification" -> {
+						val content = call.argument<String>("content") ?: "Escuchando..."
+						val updateIntent = Intent(this, MonitoringForegroundService::class.java).apply {
+							action = MonitoringForegroundService.ACTION_UPDATE
+							putExtra(MonitoringForegroundService.EXTRA_CONTENT, content)
+						}
+						startService(updateIntent)
 						result.success(true)
 					}
 					else -> result.notImplemented()

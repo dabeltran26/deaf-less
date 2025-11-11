@@ -156,6 +156,15 @@ class HomePage extends StatelessWidget {
                         );
                         return; // No continuar
                       }
+
+                      // En Android 13+ se requiere permiso de notificaciones
+                      var notifStatus = await Permission.notification.status;
+                      if (notifStatus.isDenied ||
+                          notifStatus.isRestricted ||
+                          notifStatus.isLimited) {
+                        notifStatus = await Permission.notification.request();
+                      }
+
                       await cubit.start();
                     } else {
                       await cubit.stop();

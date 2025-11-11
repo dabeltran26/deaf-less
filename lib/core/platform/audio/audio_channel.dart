@@ -16,10 +16,26 @@ class AudioChannel {
   }
 
   static Future<void> start() async {
-    await _method.invokeMethod('startMonitoring');
+    try {
+      await _method.invokeMethod('startMonitoring');
+    } catch (_) {
+      // No-op on unsupported platforms
+    }
   }
 
   static Future<void> stop() async {
-    await _method.invokeMethod('stopMonitoring');
+    try {
+      await _method.invokeMethod('stopMonitoring');
+    } catch (_) {
+      // No-op on unsupported platforms
+    }
+  }
+
+  static Future<void> updateNotification(String content) async {
+    try {
+      await _method.invokeMethod('updateNotification', {'content': content});
+    } catch (_) {
+      // Ignore on platforms without implementation
+    }
   }
 }
