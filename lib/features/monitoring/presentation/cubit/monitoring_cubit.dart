@@ -33,11 +33,10 @@ class MonitoringCubit extends Cubit<MonitoringState> {
           now.difference(_lastNotifAt!) > const Duration(seconds: 2)) {
         _lastNotifAt = now;
         AudioChannel.updateNotification(
-          'Nivel actual: ${db.toStringAsFixed(1)} dB',
+          'Aca se alerta : ${db.toStringAsFixed(1)} dB',
         );
       }
     });
-    // Ensure initial notification
     await AudioChannel.updateNotification('Escuchando...');
   }
 
@@ -45,8 +44,6 @@ class MonitoringCubit extends Cubit<MonitoringState> {
     await AudioChannel.stop();
     await _sub?.cancel();
     _lastNotifAt = null;
-    // Optionally inform stopped state
-    await AudioChannel.updateNotification('Monitoreo detenido');
     emit(MonitoringState(state.status.copyWith(isActive: false)));
   }
 

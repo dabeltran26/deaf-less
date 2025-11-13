@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:deaf_less/core/preferences/sound_preferences.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'dart:io' show Platform;
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
@@ -124,29 +125,19 @@ class HomePage extends StatelessWidget {
                     isRecording ? 'No escuchar más' : 'Empezar a escuchar',
                   ),
                   onPressed: () async {
-                    final next = !isRecording;
                     final cubit = context.read<MonitoringCubit>();
-                    if (next) {
-                      // Verificar permiso de micrófono antes de iniciar
-                      var status = await Permission.microphone.status;
-                      if (status.isDenied ||
-                          status.isRestricted ||
-                          status.isLimited) {
-                        status = await Permission.microphone.request();
-                      }
-                      if (status.isPermanentlyDenied) {
-                        // ignore: use_build_context_synchronously
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                              'Permiso de micrófono denegado permanentemente. Ve a Ajustes para habilitarlo.',
-                            ),
-                          ),
-                        );
-                        openAppSettings();
-                        return; // No continuar
-                      }
-                      if (!status.isGranted) {
+                    if (!isRecording) {
+                      // Solicitar directamente el permiso de micrófono
+                      final micStatus = await Permission.microphone.request();
+
+                      if (micStatus.isGranted) {
+                        // Solicitar permiso de notificaciones solo en Android (para alertas) - no bloquea el inicio
+                        if (Platform.isAndroid) {
+                          await Permission.notification.request();
+                        }
+                        await cubit.start();
+                        await box.put(PrefKeys.recordingActive, true);
+                      } else if (micStatus.isDenied) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
                             content: Text(
@@ -154,22 +145,22 @@ class HomePage extends StatelessWidget {
                             ),
                           ),
                         );
-                        return; // No continuar
+                      } else if (micStatus.isPermanentlyDenied ||
+                          micStatus.isRestricted ||
+                          micStatus.isLimited) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Permiso de micrófono denegado. Actívalo en Ajustes para continuar.',
+                            ),
+                          ),
+                        );
+                        openAppSettings();
                       }
-
-                      // En Android 13+ se requiere permiso de notificaciones
-                      var notifStatus = await Permission.notification.status;
-                      if (notifStatus.isDenied ||
-                          notifStatus.isRestricted ||
-                          notifStatus.isLimited) {
-                        notifStatus = await Permission.notification.request();
-                      }
-
-                      await cubit.start();
                     } else {
                       await cubit.stop();
+                      await box.put(PrefKeys.recordingActive, false);
                     }
-                    await box.put(PrefKeys.recordingActive, next);
                   },
                   style: ElevatedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 18),

@@ -50,7 +50,7 @@ class MonitoringForegroundService : Service() {
 
             return NotificationCompat.Builder(context, CHANNEL_ID)
                 .setSmallIcon(R.mipmap.ic_launcher)
-                .setContentTitle("Deaf Less")
+                .setContentTitle("Notificacion en tiempo")
                 .setContentText(content)
                 .setStyle(NotificationCompat.BigTextStyle().bigText(content))
                 .setOngoing(true)
