@@ -1,13 +1,16 @@
 package com.example.deaf_less
 
+import AudioCapsTokenizer
+import AudioModel
 import android.os.Handler
-import android.os.Looper
 import android.content.Intent
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.media.AudioFormat
 import android.Manifest
 import android.content.pm.PackageManager
+import android.util.Log
+import androidx.annotation.RequiresPermission
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterActivity
@@ -15,9 +18,16 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
-import kotlin.random.Random
+import java.io.File
+import java.io.FileOutputStream
+import kotlin.math.log10
+import kotlin.math.sqrt
 
 class MainActivity : FlutterActivity() {
+
+	private lateinit var audioModel: AudioModel
+	private lateinit var tokenizer: AudioCapsTokenizer
+
 	private val methodChannelName = "sound_guardian/audio"
 	private val eventChannelName = "sound_guardian/audioStream"
 
@@ -77,7 +87,8 @@ class MainActivity : FlutterActivity() {
 
 		EventChannel(flutterEngine.dartExecutor.binaryMessenger, eventChannelName)
 			.setStreamHandler(object : EventChannel.StreamHandler {
-				override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+				@RequiresPermission(Manifest.permission.RECORD_AUDIO)
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
 					eventSink = events
 					if (isStarted) startAudioStream()
 				}
@@ -93,11 +104,30 @@ class MainActivity : FlutterActivity() {
 		return ActivityCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
 	}
 
-	private fun startAudioStream(): Boolean {
+	@RequiresPermission(Manifest.permission.RECORD_AUDIO)
+    private fun startAudioStream(): Boolean {
 		if (isStarted) return true
+
+		audioModel = AudioModel(this)
+
+		val inputStream = assets.open("flutter_assets/assets/tokenizer.json")
+		tokenizer = AudioCapsTokenizer(this, inputStream)
+
+
+		val destFile = File(context.filesDir, "modelo.pte")
+
+		assets.open("flutter_assets/assets/modelo.pte").use { input ->
+			FileOutputStream(destFile).use { output ->
+				input.copyTo(output)
+			}
+		}
+		audioModel.loadModel(destFile.absolutePath)
+
+		scanAudio()
+
 		if (!hasAudioPermission()) return false
 		isStarted = true
-		stopMockStream()
+		stopAudioStream()
 		audioRecord = AudioRecord(
 			MediaRecorder.AudioSource.MIC,
 			sampleRate,
@@ -116,8 +146,8 @@ class MainActivity : FlutterActivity() {
 						val v = buffer[i].toDouble()
 						sum += v * v
 					}
-					val rms = kotlin.math.sqrt(sum / read)
-					val db = if (rms > 0) 20 * kotlin.math.log10(rms / 32767.0) + 90 else 0.0
+					val rms = sqrt(sum / read)
+					val db = if (rms > 0) 20 * log10(rms / 32767.0) + 90 else 0.0
 					eventSink?.success(db)
 				}
 				try {
@@ -138,23 +168,25 @@ class MainActivity : FlutterActivity() {
 		recordingThread = null
 	}
 
-	private fun startMockStream() {
-		if (isStarted) return
-		isStarted = true
-		if (handler == null) handler = Handler(Looper.getMainLooper())
-		handler?.post(object : Runnable {
-			override fun run() {
-				if (!isStarted) return
-				// Emit a random dB value between 30 and 80
-				val db = 30 + Random.nextDouble() * 50
-				eventSink?.success(db)
-				handler?.postDelayed(this, 800)
+	private fun scanAudio() {
+		Thread {
+			try {
+				val inputStream = assets.open("flutter_assets/assets/sample_audio.wav")
+				val rawBytes = inputStream.readBytes().also { inputStream.close() }
+				val pcmBytes = if (rawBytes.size > 44) rawBytes.copyOfRange(44, rawBytes.size) else rawBytes
+				val tokenIds = audioModel.predict(pcmBytes)
+				if (tokenIds != null) {
+					val caption = tokenizer.decode(tokenIds)
+					runOnUiThread {
+						Log.d("Result", "IDs: ${tokenIds.joinToString()}")
+						Log.d("Result", "Caption: $caption")
+					}
+				} else {
+					Log.e("Result", "tokenIds nulos al procesar sample_audio.wav")
+				}
+			} catch (e: Exception) {
+				Log.e("Result", "Error leyendo asset sample_audio.wav: ${e.message}")
 			}
-		})
-	}
-
-	private fun stopMockStream() {
-		isStarted = false
-		handler?.removeCallbacksAndMessages(null)
+		}.start()
 	}
 }
