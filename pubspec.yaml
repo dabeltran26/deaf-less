@@ -33,6 +33,4 @@ flutter:
   # iOS: add NSMicrophoneUsageDescription in Info.plist
   # Android: ensure android.permission.RECORD_AUDIO is declared in AndroidManifest.xml
   assets:
-    - assets/tokenizer.json
-    - assets/modelo.pte
-    - assets/sample_audio.wav
+    - assets/

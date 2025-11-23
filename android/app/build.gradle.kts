@@ -47,4 +47,6 @@ dependencies {
     implementation("org.pytorch:executorch-android:1.0.0") 
     implementation("com.facebook.soloader:soloader:0.10.5")
     implementation("com.facebook.fbjni:fbjni:0.7.0")
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.17.0")
+    implementation("androidx.media3:media3-common-ktx:1.8.0")
 }

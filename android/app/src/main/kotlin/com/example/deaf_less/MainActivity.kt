@@ -20,13 +20,18 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
 import java.io.FileOutputStream
+import java.io.InputStream
 import kotlin.math.log10
 import kotlin.math.sqrt
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 
 class MainActivity : FlutterActivity() {
 
-	private lateinit var audioModel: AudioModel
-	private lateinit var tokenizer: AudioCapsTokenizer
+	private lateinit var audioCaptioningProcessor: AudioCaptioningProcessor
+
+	//private lateinit var audioModel: AudioModel
+	//private lateinit var tokenizer: AudioCapsTokenizer
 
 	private val methodChannelName = "sound_guardian/audio"
 	private val eventChannelName = "sound_guardian/audioStream"
@@ -107,23 +112,20 @@ class MainActivity : FlutterActivity() {
 	@RequiresPermission(Manifest.permission.RECORD_AUDIO)
     private fun startAudioStream(): Boolean {
 		if (isStarted) return true
-
-		audioModel = AudioModel(this)
-
+		audioCaptioningProcessor = AudioCaptioningProcessor()
+/*		audioModel = AudioModel(this)
 		val inputStream = assets.open("flutter_assets/assets/tokenizer.json")
 		tokenizer = AudioCapsTokenizer(this, inputStream)
-
-
 		val destFile = File(context.filesDir, "modelo.pte")
-
 		assets.open("flutter_assets/assets/modelo.pte").use { input ->
 			FileOutputStream(destFile).use { output ->
 				input.copyTo(output)
 			}
 		}
 		audioModel.loadModel(destFile.absolutePath)
+        scanAudio()*/
 
-		scanAudio()
+		newScan()
 
 		if (!hasAudioPermission()) return false
 		isStarted = true
@@ -168,7 +170,7 @@ class MainActivity : FlutterActivity() {
 		recordingThread = null
 	}
 
-	private fun scanAudio() {
+	/*private fun scanAudio() {
 		Thread {
 			try {
 				val inputStream = assets.open("flutter_assets/assets/sample_audio.wav")
@@ -188,5 +190,60 @@ class MainActivity : FlutterActivity() {
 				Log.e("Result", "Error leyendo asset sample_audio.wav: ${e.message}")
 			}
 		}.start()
+	}*/
+
+	private fun newScan(){
+		val encoderBytes = assets.open("flutter_assets/assets/effb2_encoder_preprocess.onnx").readBytes()
+		val decoderBytes = assets.open("flutter_assets/assets/effb2_decoder_step.onnx").readBytes()
+		audioCaptioningProcessor.initializeModels(encoderBytes, decoderBytes)
+
+		//val audioFloatArray = FloatArray(16000 * 3) { 0.0f }
+		val inputStream = assets.open("flutter_assets/assets/doorbell.wav")
+		val audioData = AudioUtils.loadWavFile(inputStream)
+
+		Thread {
+			try {
+				val tokenIds = audioCaptioningProcessor.generateCaption(audioData)
+				println("Generated Token IDs: $tokenIds")
+				// 4. Convert IDs to Text
+				// You will need a simple helper to map these IDs back to words
+				// using your tokenizer.json
+				// val sentence = Tokenizer.decode(tokenIds)
+			} catch (e: Exception) {
+				e.printStackTrace()
+			}
+		}.start()
 	}
+
+	object AudioUtils {
+		// Tu método existente
+		fun loadWavFile(file: File): FloatArray {
+			val bytes = file.readBytes()
+			return processWavBytes(bytes)
+		}
+
+		// NUEVO: Método para InputStream (para assets)
+		fun loadWavFile(inputStream: InputStream): FloatArray {
+			val bytes = inputStream.readBytes()
+			return processWavBytes(bytes)
+		}
+
+		// Lógica compartida
+		private fun processWavBytes(bytes: ByteArray): FloatArray {
+			val headerSize = 44
+			if (bytes.size <= headerSize) return FloatArray(0)
+
+			val shortBuffer = ByteBuffer.wrap(bytes, headerSize, bytes.size - headerSize)
+				.order(ByteOrder.LITTLE_ENDIAN)
+				.asShortBuffer()
+
+			val shortArray = ShortArray(shortBuffer.remaining())
+			shortBuffer.get(shortArray)
+
+			return FloatArray(shortArray.size) { i ->
+				shortArray[i] / 32768.0f
+			}
+		}
+	}
+
 }
