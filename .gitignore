@@ -1,0 +1,84 @@
+# See https://www.dartlang.org/guides/libraries/private-files
+# Flutter/Dart specific
+**/build/
+**/ios/Pods/
+**/android/.gradle/
+**/android/build/
+**/android/app/build/
+**/android/app/src/main/java/
+**/android/gradle/
+**/android/gradlew
+**/android/gradlew.bat
+**/android/local.properties
+**/android/app/src/main/java
+**/ios/Flutter/
+**/ios/Runner/GeneratedPluginRegistrant.m
+**/*.iml
+**/.dart_tool/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/.idea/
+**/.metadata/
+**/packages/
+**/ticket_book_webview/fonts/
+**/ticket_book_webview/locales/
+**/ticket_book_webview/locales/en/
+**/ticket_book_webview/locales/es/
+**/ticket_book_webview/locales/pt/
+**/ticket_book_webview/assets/
+
+# Android-specific
+**/android/captures/
+
+# IntelliJ related
+**/*.jks
+**/*.p12
+**/*.dart.js
+**/*.g.dart
+**/*.gr.dart
+**/*.png.dart
+.idea/
+*.iml
+*.ipr
+*.iws
+*.bak/
+*.swp
+*.swo
+*.jar
+*.zip
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/dictionaries
+.idea/libraries
+.idea/modules.xml
+*.log
+*.txt
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/.name
+.idea/compiler.xml
+.idea/runConfigurations.xml
+
+# Visual Studio Code related
+.vscode/
+**/*.code-workspace
+
+# macOS specific
+**/.DS_Store
+
+# Flutter SDK paths
+/bin/cache/
+/bin/flutter*
+
+# Obsolete files to ignore
+**/pubspec.lock
+
+#images golden test
+test/**/*.png
+
+#firebase files
+firestore.rules
+firebase.json
+firestore.indexes.json
+.firebaserc
+_temp/

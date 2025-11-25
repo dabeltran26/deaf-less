@@ -198,17 +198,26 @@ class MainActivity : FlutterActivity() {
 		audioCaptioningProcessor.initializeModels(encoderBytes, decoderBytes)
 
 		//val audioFloatArray = FloatArray(16000 * 3) { 0.0f }
-		val inputStream = assets.open("flutter_assets/assets/doorbell.wav")
-		val audioData = AudioUtils.loadWavFile(inputStream)
+		//val audioInputStream = assets.open("flutter_assets/assets/doorbell.wav")
+		val audioInputStream = assets.open("flutter_assets/assets/cat_bells.wav")
+		//val audioInputStream = assets.open("flutter_assets/assets/walking.wav")
+		//val audioInputStream = assets.open("flutter_assets/assets/output_audio.wav")
+		val audioData = AudioUtils.loadWavFile(audioInputStream)
+		
+		// Load tokenizer
+		val tokenizerInputStream = assets.open("flutter_assets/assets/tokenizer.json")
+		val tokenizer = AudioCapsTokenizer(this, tokenizerInputStream)
 
 		Thread {
 			try {
 				val tokenIds = audioCaptioningProcessor.generateCaption(audioData)
+				Log.d("AudioCaption", "Generated Token IDs: $tokenIds")
+				
+				// Decode to text
+				val caption = tokenizer.decode(tokenIds)
+				Log.d("AudioCaption", "Generated Caption: $caption")
 				println("Generated Token IDs: $tokenIds")
-				// 4. Convert IDs to Text
-				// You will need a simple helper to map these IDs back to words
-				// using your tokenizer.json
-				// val sentence = Tokenizer.decode(tokenIds)
+				println("Generated Caption: $caption")
 			} catch (e: Exception) {
 				e.printStackTrace()
 			}

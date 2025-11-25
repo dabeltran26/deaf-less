@@ -30,9 +30,47 @@ class AudioCaptioningProcessor() {
         val embeddingTensor = encResult[0] as OnnxTensor
         val embeddingBuffer = embeddingTensor.floatBuffer
         val embeddingShape = embeddingTensor.info.shape
-        val timeDimension = embeddingShape[1]
+        val timeDimension = embeddingShape[1].toInt()
+        val featureDimension = embeddingShape[2].toInt()
+        
+        // CRITICAL FIX: Decoder requires exactly 16 time steps
+        // If encoder outputs a different number, we need to downsample
+        val targetTimeDim = 16
+        val downsampledBuffer: FloatBuffer
+        val finalTimeDim: Long
+        
+        if (timeDimension == targetTimeDim) {
+            // No downsampling needed
+            downsampledBuffer = embeddingBuffer
+            finalTimeDim = timeDimension.toLong()
+        } else {
+            // Downsample by averaging adjacent time steps
+            val downsampleFactor = timeDimension / targetTimeDim
+            val downsampledArray = FloatArray(targetTimeDim * featureDimension)
+            
+            // Read all embeddings into array
+            embeddingBuffer.rewind()
+            val allEmbeddings = FloatArray(timeDimension * featureDimension)
+            embeddingBuffer.get(allEmbeddings)
+            
+            // Average groups of time steps
+            for (t in 0 until targetTimeDim) {
+                for (f in 0 until featureDimension) {
+                    var sum = 0f
+                    for (i in 0 until downsampleFactor) {
+                        val srcIdx = (t * downsampleFactor + i) * featureDimension + f
+                        sum += allEmbeddings[srcIdx]
+                    }
+                    downsampledArray[t * featureDimension + f] = sum / downsampleFactor
+                }
+            }
+            
+            downsampledBuffer = FloatBuffer.wrap(downsampledArray)
+            finalTimeDim = targetTimeDim.toLong()
+            android.util.Log.d("AudioProcessor", "Downsampled from $timeDimension to $targetTimeDim time steps")
+        }
 
-        val attnLenData = longArrayOf(timeDimension)
+        val attnLenData = longArrayOf(finalTimeDim)
 
         val generatedTokens = mutableListOf<Long>()
         generatedTokens.add(bosToken)
@@ -45,10 +83,24 @@ class AudioCaptioningProcessor() {
         val nameLen = decInputNames[2]
 
         for (step in 0 until maxTokens) {
-            val inputIdsTensor = OnnxTensor.createTensor(env, LongBuffer.wrap(longArrayOf(currentToken)), longArrayOf(1, 1))
-            embeddingBuffer.rewind()
-            val encoderHiddenStatesTensor = OnnxTensor.createTensor(env, embeddingBuffer, embeddingShape)
-            val encoderAttnMaskTensor = OnnxTensor.createTensor(env, LongBuffer.wrap(attnLenData), longArrayOf(1))
+            val tokenBuffer = LongBuffer.allocate(1)
+            tokenBuffer.put(currentToken)
+            tokenBuffer.rewind()
+            val inputIdsTensor = OnnxTensor.createTensor(env, tokenBuffer, longArrayOf(1, 1))
+            
+            downsampledBuffer.rewind()
+            val downsampledShape = longArrayOf(1, finalTimeDim, featureDimension.toLong())
+            val encoderHiddenStatesTensor = OnnxTensor.createTensor(env, downsampledBuffer, downsampledShape)
+            
+            val attnLenBuffer = LongBuffer.allocate(1)
+            attnLenBuffer.put(finalTimeDim)
+            attnLenBuffer.rewind()
+            val encoderAttnMaskTensor = OnnxTensor.createTensor(env, attnLenBuffer, longArrayOf(1))
+            
+            android.util.Log.d("DecoderDebug", "Step $step - inputIds shape: ${inputIdsTensor.info.shape.contentToString()}")
+            android.util.Log.d("DecoderDebug", "Step $step - embeddings shape: ${encoderHiddenStatesTensor.info.shape.contentToString()}")
+            android.util.Log.d("DecoderDebug", "Step $step - attn_len shape: ${encoderAttnMaskTensor.info.shape.contentToString()}")
+            
             val inputs = mapOf(
                 nameIds to inputIdsTensor,
                 nameEmb to encoderHiddenStatesTensor,

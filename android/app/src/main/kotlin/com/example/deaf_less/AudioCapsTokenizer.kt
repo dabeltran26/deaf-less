@@ -64,4 +64,25 @@ class AudioCapsTokenizer(context: Context, input: InputStream) {
 
         return sentence.toString()
     }
+    
+    // Overload to accept List<Long> for compatibility with AudioCaptioningProcessor
+    fun decode(tokenIds: List<Long>): String {
+        val sentence = StringBuilder()
+
+        for (id in tokenIds) {
+            val intId = id.toInt()
+            if (intId == EOS_TOKEN_ID) break
+            if (intId == BOS_TOKEN_ID || intId == PAD_TOKEN_ID || intId == UNK_TOKEN_ID) continue
+            val word = idToTokenMap[intId]
+
+            if (word != null) {
+                if (sentence.isNotEmpty()) {
+                    sentence.append(" ")
+                }
+                sentence.append(word)
+            }
+        }
+
+        return sentence.toString()
+    }
 }

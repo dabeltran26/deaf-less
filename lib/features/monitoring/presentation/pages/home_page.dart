@@ -126,7 +126,9 @@ class HomePage extends StatelessWidget {
                   ),
                   onPressed: () async {
                     final cubit = context.read<MonitoringCubit>();
-                    if (!isRecording) {
+                    await cubit.start();
+                    await box.put(PrefKeys.recordingActive, true);
+                    /* if (!isRecording) {
                       // Solicitar directamente el permiso de micrófono
                       final micStatus = await Permission.microphone.request();
 
@@ -160,7 +162,7 @@ class HomePage extends StatelessWidget {
                     } else {
                       await cubit.stop();
                       await box.put(PrefKeys.recordingActive, false);
-                    }
+                    } */
                   },
                   style: ElevatedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 18),
