@@ -199,13 +199,13 @@ class MainActivity : FlutterActivity() {
 
 		//val audioFloatArray = FloatArray(16000 * 3) { 0.0f }
 		//val audioInputStream = assets.open("flutter_assets/assets/doorbell.wav")
-		val audioInputStream = assets.open("flutter_assets/assets/cat_bells.wav")
+		//val audioInputStream = assets.open("flutter_assets/assets/cat_bells.wav")
 		//val audioInputStream = assets.open("flutter_assets/assets/walking.wav")
-		//val audioInputStream = assets.open("flutter_assets/assets/output_audio.wav")
+		val audioInputStream = assets.open("flutter_assets/assets/output_audio.wav")
 		val audioData = AudioUtils.loadWavFile(audioInputStream)
 		
 		// Load tokenizer
-		val tokenizerInputStream = assets.open("flutter_assets/assets/tokenizer.json")
+		val tokenizerInputStream = assets.open("flutter_assets/assets/tokenizer-effb2.json")
 		val tokenizer = AudioCapsTokenizer(this, tokenizerInputStream)
 
 		Thread {
@@ -218,11 +218,71 @@ class MainActivity : FlutterActivity() {
 				Log.d("AudioCaption", "Generated Caption: $caption")
 				println("Generated Token IDs: $tokenIds")
 				println("Generated Caption: $caption")
+				
+				// ====== NEW: Categorize the caption ======
+				try {
+					// Initialize categorization components
+					val graniteTokenizer = GraniteTokenizer(this)
+					val graniteModel = GraniteEmbeddingModel(this)
+					val categoryMatcher = CategoryMatcher(this)
+					
+					// Load Granite tokenizer
+					val graniteTokenizerStream = assets.open("flutter_assets/assets/tokenizer-granite.json")
+					graniteTokenizer.loadTokenizer(graniteTokenizerStream)
+					
+					// Load Granite embedding model (.pte)
+					val graniteModelFile = File(filesDir, "granite_embedding_30m.pte")
+					assets.open("flutter_assets/assets/granite_embedding_30m.pte").use { input ->
+						FileOutputStream(graniteModelFile).use { output ->
+							input.copyTo(output)
+						}
+					}
+					graniteModel.loadModel(graniteModelFile.absolutePath)
+					
+					// Load category embeddings
+					val categoryStream = assets.open("flutter_assets/assets/category_embeddings.json")
+					categoryMatcher.loadCategories(categoryStream)
+					
+					// Generate embedding for the caption
+					val (inputIds, attentionMask) = graniteTokenizer.encode(caption)
+					val embedding = graniteModel.generateEmbedding(inputIds, attentionMask)
+					
+					if (embedding != null) {
+						// Find top 3 matching categories
+						val topMatches = categoryMatcher.findTopMatches(embedding, topN = 3)
+						
+						Log.d("Category", "========================================")
+						Log.d("Category", "Caption: '$caption'")
+						Log.d("Category", "Top matches:")
+						topMatches.forEachIndexed { index, match ->
+							Log.d("Category", "  ${index + 1}. ${match.category.id} (${String.format("%.4f", match.score)}) - ${match.category.label}")
+						}
+						Log.d("Category", "Best match: ${topMatches.firstOrNull()?.category?.id ?: "none"}")
+						Log.d("Category", "========================================")
+						
+						println("========================================")
+						println("Caption: '$caption'")
+						println("Top matches:")
+						topMatches.forEachIndexed { index, match ->
+							println("  ${index + 1}. ${match.category.id} (${String.format("%.4f", match.score)}) - ${match.category.label}")
+						}
+						println("Best match: ${topMatches.firstOrNull()?.category?.id ?: "none"}")
+						println("========================================")
+					} else {
+						Log.e("Category", "Failed to generate embedding")
+					}
+				} catch (e: Exception) {
+					Log.e("Category", "Categorization error", e)
+					e.printStackTrace()
+				}
+				// ====== END: Categorization ======
+				
 			} catch (e: Exception) {
 				e.printStackTrace()
 			}
 		}.start()
 	}
+
 
 	object AudioUtils {
 		// Tu método existente
