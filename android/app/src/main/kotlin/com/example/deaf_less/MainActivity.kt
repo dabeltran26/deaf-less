@@ -152,12 +152,25 @@ class MainActivity : FlutterActivity() {
 	}
 
 	private fun audioAnalyzer(){
+		// Copy ExecuTorch Decoder to filesDir
+		val decoderFile = File(filesDir, "effb2_decoder_5sec.pte")
+		if (!decoderFile.exists()) {
+			try {
+				assets.open("flutter_assets/assets/effb2_decoder_5sec.pte").use { input ->
+					FileOutputStream(decoderFile).use { output ->
+						input.copyTo(output)
+					}
+				}
+			} catch (e: Exception) {
+				Log.e("MainActivity", "Error copying decoder model", e)
+			}
+		}
+
 		val encoderBytes = assets.open("flutter_assets/assets/effb2_encoder_preprocess.onnx").readBytes()
-		val decoderBytes = assets.open("flutter_assets/assets/effb2_decoder_step.onnx").readBytes()
-		audioCaptioningProcessor.initializeModels(encoderBytes, decoderBytes)
+		audioCaptioningProcessor.initializeModels(encoderBytes, decoderFile.absolutePath)
 
 		//AUDIO QUE RECIBE DE FLUTTER ( 5 sec ) .. formato wav .. 32khz .. mono stereo
-		val audioInputStream = assets.open("flutter_assets/assets/output_audio.wav")
+		val audioInputStream = assets.open("flutter_assets/assets/dog.wav")
 		val audioData = AudioUtils.loadWavFile(audioInputStream)
 
 		val tokenizerInputStream = assets.open("flutter_assets/assets/tokenizer-effb2.json")
@@ -168,25 +181,30 @@ class MainActivity : FlutterActivity() {
 				val tokenIds = audioCaptioningProcessor.generateCaption(audioData)
 				val caption = tokenizer.decode(tokenIds)
 				try {
-					val graniteTokenizer = GraniteTokenizer(this)
-					val graniteModel = GraniteEmbeddingModel(this)
+					val bertTokenizer = BertTokenizer(this)
+					val embeddingModel = SentenceTransformerEmbeddingModel(this)
 					val categoryMatcher = CategoryMatcher(this)
-					val graniteTokenizerStream = assets.open("flutter_assets/assets/tokenizer-granite.json")
-					graniteTokenizer.loadTokenizer(graniteTokenizerStream)
+					
+					val bertTokenizerStream = assets.open("flutter_assets/assets/tokenizer-sentence_transformers.json")
+					bertTokenizer.loadTokenizer(bertTokenizerStream)
 
-					val graniteModelFile = File(filesDir, "granite_embedding_30m.pte")
-					assets.open("flutter_assets/assets/granite_embedding_30m.pte").use { input ->
-						FileOutputStream(graniteModelFile).use { output ->
-							input.copyTo(output)
+					val embeddingModelFile = File(filesDir, "sentence_transformers_minilm.pte")
+					if (!embeddingModelFile.exists()) {
+						assets.open("flutter_assets/assets/sentence_transformers_minilm.pte").use { input ->
+							FileOutputStream(embeddingModelFile).use { output ->
+								input.copyTo(output)
+							}
 						}
 					}
-					graniteModel.loadModel(graniteModelFile.absolutePath)
+					embeddingModel.loadModel(embeddingModelFile.absolutePath)
 
 					val categoryStream = assets.open("flutter_assets/assets/category_embeddings.json")
 					categoryMatcher.loadCategories(categoryStream)
 
-					val (inputIds, attentionMask) = graniteTokenizer.encode(caption)
-					val embedding = graniteModel.generateEmbedding(inputIds, attentionMask)
+					Log.d("MainActivity", "Generated Caption: '$caption'")
+
+					val (inputIds, attentionMask, _) = bertTokenizer.encode(caption)
+					val embedding = embeddingModel.generateEmbedding(inputIds, attentionMask)
 					
 					if (embedding != null) {
 						val topMatches = categoryMatcher.findTopMatches(embedding, topN = 3)

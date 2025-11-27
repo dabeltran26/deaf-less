@@ -82,5 +82,4 @@ firebase.json
 firestore.indexes.json
 .firebaserc
 _temp/
-
-*.pte
+_working_models/
