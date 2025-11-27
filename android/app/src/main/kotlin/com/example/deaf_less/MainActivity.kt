@@ -1,8 +1,6 @@
 package com.example.deaf_less
 
 import AudioCapsTokenizer
-import AudioModel
-import android.os.Handler
 import android.content.Intent
 import android.media.AudioRecord
 import android.media.MediaRecorder
@@ -30,14 +28,10 @@ class MainActivity : FlutterActivity() {
 
 	private lateinit var audioCaptioningProcessor: AudioCaptioningProcessor
 
-	//private lateinit var audioModel: AudioModel
-	//private lateinit var tokenizer: AudioCapsTokenizer
-
 	private val methodChannelName = "sound_guardian/audio"
 	private val eventChannelName = "sound_guardian/audioStream"
 
 	private var isStarted = false
-	private var handler: Handler? = null
 	private var eventSink: EventChannel.EventSink? = null
 
 	private var audioRecord: AudioRecord? = null
@@ -113,20 +107,7 @@ class MainActivity : FlutterActivity() {
     private fun startAudioStream(): Boolean {
 		if (isStarted) return true
 		audioCaptioningProcessor = AudioCaptioningProcessor()
-/*		audioModel = AudioModel(this)
-		val inputStream = assets.open("flutter_assets/assets/tokenizer.json")
-		tokenizer = AudioCapsTokenizer(this, inputStream)
-		val destFile = File(context.filesDir, "modelo.pte")
-		assets.open("flutter_assets/assets/modelo.pte").use { input ->
-			FileOutputStream(destFile).use { output ->
-				input.copyTo(output)
-			}
-		}
-		audioModel.loadModel(destFile.absolutePath)
-        scanAudio()*/
-
-		newScan()
-
+		audioAnalyzer()
 		if (!hasAudioPermission()) return false
 		isStarted = true
 		stopAudioStream()
@@ -170,67 +151,29 @@ class MainActivity : FlutterActivity() {
 		recordingThread = null
 	}
 
-	/*private fun scanAudio() {
-		Thread {
-			try {
-				val inputStream = assets.open("flutter_assets/assets/sample_audio.wav")
-				val rawBytes = inputStream.readBytes().also { inputStream.close() }
-				val pcmBytes = if (rawBytes.size > 44) rawBytes.copyOfRange(44, rawBytes.size) else rawBytes
-				val tokenIds = audioModel.predict(pcmBytes)
-				if (tokenIds != null) {
-					val caption = tokenizer.decode(tokenIds)
-					runOnUiThread {
-						Log.d("Result", "IDs: ${tokenIds.joinToString()}")
-						Log.d("Result", "Caption: $caption")
-					}
-				} else {
-					Log.e("Result", "tokenIds nulos al procesar sample_audio.wav")
-				}
-			} catch (e: Exception) {
-				Log.e("Result", "Error leyendo asset sample_audio.wav: ${e.message}")
-			}
-		}.start()
-	}*/
-
-	private fun newScan(){
+	private fun audioAnalyzer(){
 		val encoderBytes = assets.open("flutter_assets/assets/effb2_encoder_preprocess.onnx").readBytes()
 		val decoderBytes = assets.open("flutter_assets/assets/effb2_decoder_step.onnx").readBytes()
 		audioCaptioningProcessor.initializeModels(encoderBytes, decoderBytes)
 
-		//val audioFloatArray = FloatArray(16000 * 3) { 0.0f }
-		//val audioInputStream = assets.open("flutter_assets/assets/doorbell.wav")
-		//val audioInputStream = assets.open("flutter_assets/assets/cat_bells.wav")
-		//val audioInputStream = assets.open("flutter_assets/assets/walking.wav")
+		//AUDIO QUE RECIBE DE FLUTTER ( 5 sec ) .. formato wav .. 32khz .. mono stereo
 		val audioInputStream = assets.open("flutter_assets/assets/output_audio.wav")
 		val audioData = AudioUtils.loadWavFile(audioInputStream)
-		
-		// Load tokenizer
+
 		val tokenizerInputStream = assets.open("flutter_assets/assets/tokenizer-effb2.json")
 		val tokenizer = AudioCapsTokenizer(this, tokenizerInputStream)
 
 		Thread {
 			try {
 				val tokenIds = audioCaptioningProcessor.generateCaption(audioData)
-				Log.d("AudioCaption", "Generated Token IDs: $tokenIds")
-				
-				// Decode to text
 				val caption = tokenizer.decode(tokenIds)
-				Log.d("AudioCaption", "Generated Caption: $caption")
-				println("Generated Token IDs: $tokenIds")
-				println("Generated Caption: $caption")
-				
-				// ====== NEW: Categorize the caption ======
 				try {
-					// Initialize categorization components
 					val graniteTokenizer = GraniteTokenizer(this)
 					val graniteModel = GraniteEmbeddingModel(this)
 					val categoryMatcher = CategoryMatcher(this)
-					
-					// Load Granite tokenizer
 					val graniteTokenizerStream = assets.open("flutter_assets/assets/tokenizer-granite.json")
 					graniteTokenizer.loadTokenizer(graniteTokenizerStream)
-					
-					// Load Granite embedding model (.pte)
+
 					val graniteModelFile = File(filesDir, "granite_embedding_30m.pte")
 					assets.open("flutter_assets/assets/granite_embedding_30m.pte").use { input ->
 						FileOutputStream(graniteModelFile).use { output ->
@@ -238,36 +181,25 @@ class MainActivity : FlutterActivity() {
 						}
 					}
 					graniteModel.loadModel(graniteModelFile.absolutePath)
-					
-					// Load category embeddings
+
 					val categoryStream = assets.open("flutter_assets/assets/category_embeddings.json")
 					categoryMatcher.loadCategories(categoryStream)
-					
-					// Generate embedding for the caption
+
 					val (inputIds, attentionMask) = graniteTokenizer.encode(caption)
 					val embedding = graniteModel.generateEmbedding(inputIds, attentionMask)
 					
 					if (embedding != null) {
-						// Find top 3 matching categories
 						val topMatches = categoryMatcher.findTopMatches(embedding, topN = 3)
-						
-						Log.d("Category", "========================================")
-						Log.d("Category", "Caption: '$caption'")
-						Log.d("Category", "Top matches:")
+						Log.d("Caption", "'$caption'")
 						topMatches.forEachIndexed { index, match ->
 							Log.d("Category", "  ${index + 1}. ${match.category.id} (${String.format("%.4f", match.score)}) - ${match.category.label}")
 						}
 						Log.d("Category", "Best match: ${topMatches.firstOrNull()?.category?.id ?: "none"}")
-						Log.d("Category", "========================================")
-						
-						println("========================================")
-						println("Caption: '$caption'")
-						println("Top matches:")
 						topMatches.forEachIndexed { index, match ->
 							println("  ${index + 1}. ${match.category.id} (${String.format("%.4f", match.score)}) - ${match.category.label}")
 						}
+						//RETORNAR A FLUTTER COMO ALERTA
 						println("Best match: ${topMatches.firstOrNull()?.category?.id ?: "none"}")
-						println("========================================")
 					} else {
 						Log.e("Category", "Failed to generate embedding")
 					}
@@ -275,29 +207,17 @@ class MainActivity : FlutterActivity() {
 					Log.e("Category", "Categorization error", e)
 					e.printStackTrace()
 				}
-				// ====== END: Categorization ======
-				
 			} catch (e: Exception) {
 				e.printStackTrace()
 			}
 		}.start()
 	}
 
-
 	object AudioUtils {
-		// Tu método existente
-		fun loadWavFile(file: File): FloatArray {
-			val bytes = file.readBytes()
-			return processWavBytes(bytes)
-		}
-
-		// NUEVO: Método para InputStream (para assets)
 		fun loadWavFile(inputStream: InputStream): FloatArray {
 			val bytes = inputStream.readBytes()
 			return processWavBytes(bytes)
 		}
-
-		// Lógica compartida
 		private fun processWavBytes(bytes: ByteArray): FloatArray {
 			val headerSize = 44
 			if (bytes.size <= headerSize) return FloatArray(0)

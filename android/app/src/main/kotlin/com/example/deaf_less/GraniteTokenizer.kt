@@ -13,8 +13,6 @@ class GraniteTokenizer(private val context: Context) {
     
     private var vocab: Map<String, Int> = emptyMap()
     private var merges: List<Pair<String, String>> = emptyList()
-    
-    // Special token IDs from tokenizer.json
     private val BOS_TOKEN = 0L  // <s>
     private val PAD_TOKEN = 1L  // <pad>
     private val EOS_TOKEN = 2L  // </s>
@@ -38,8 +36,6 @@ class GraniteTokenizer(private val context: Context) {
                 vocabMap[key] = vocabObj.getInt(key)
             }
             vocab = vocabMap
-            
-            // Load merges (optional - may be empty for simplified tokenization)
             try {
                 if (modelObj.has("merges")) {
                     val mergesArray = modelObj.getJSONArray("merges")
