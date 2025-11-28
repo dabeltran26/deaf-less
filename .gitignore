@@ -1,3 +1,6 @@
+# Ignore model and encoder files in assets
+assets/*.pte
+assets/*.onnx
 # See https://www.dartlang.org/guides/libraries/private-files
 # Flutter/Dart specific
 **/build/
