@@ -34,16 +34,6 @@ class MainActivity : FlutterActivity() {
 	private var isStarted = false
 	private var eventSink: EventChannel.EventSink? = null
 
-	private var audioRecord: AudioRecord? = null
-	private var recordingThread: Thread? = null
-
-	private val sampleRate = 44100
-	private val bufferSize = AudioRecord.getMinBufferSize(
-		sampleRate,
-		AudioFormat.CHANNEL_IN_MONO,
-		AudioFormat.ENCODING_PCM_16BIT
-	)
-
 	override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
 		super.configureFlutterEngine(flutterEngine)
 
@@ -55,7 +45,7 @@ class MainActivity : FlutterActivity() {
 						if (started) {
 							val startIntent = Intent(this, MonitoringForegroundService::class.java).apply {
 								action = MonitoringForegroundService.ACTION_START
-								putExtra(MonitoringForegroundService.EXTRA_CONTENT, "Escuchando...")
+								putExtra(MonitoringForegroundService.EXTRA_CONTENT, "No a pasado nada :D")
 							}
 							ContextCompat.startForegroundService(this, startIntent)
 							result.success(true)
@@ -72,7 +62,7 @@ class MainActivity : FlutterActivity() {
 						result.success(true)
 					}
 					"updateNotification" -> {
-						val content = call.argument<String>("content") ?: "Escuchando..."
+						val content = call.argument<String>("content") ?: ""
 						val updateIntent = Intent(this, MonitoringForegroundService::class.java).apply {
 							action = MonitoringForegroundService.ACTION_UPDATE
 							putExtra(MonitoringForegroundService.EXTRA_CONTENT, content)
@@ -107,57 +97,28 @@ class MainActivity : FlutterActivity() {
     private fun startAudioStream(): Boolean {
 		if (isStarted) return true
 		audioCaptioningProcessor = AudioCaptioningProcessor()
-		audioAnalyzer()
 		if (!hasAudioPermission()) return false
+		audioAnalyzer()
 		isStarted = true
-		stopAudioStream()
-		audioRecord = AudioRecord(
-			MediaRecorder.AudioSource.MIC,
-			sampleRate,
-			AudioFormat.CHANNEL_IN_MONO,
-			AudioFormat.ENCODING_PCM_16BIT,
-			bufferSize
-		)
-		audioRecord?.startRecording()
-		recordingThread = Thread {
-			val buffer = ShortArray(bufferSize)
-			while (isStarted && audioRecord?.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
-				val read = audioRecord?.read(buffer, 0, buffer.size) ?: 0
-				if (read > 0) {
-					var sum = 0.0
-					for (i in 0 until read) {
-						val v = buffer[i].toDouble()
-						sum += v * v
-					}
-					val rms = sqrt(sum / read)
-					val db = if (rms > 0) 20 * log10(rms / 32767.0) + 90 else 0.0
-					eventSink?.success(db)
-				}
-				try {
-					Thread.sleep(500)
-				} catch (_: InterruptedException) { }
-			}
-		}
-		recordingThread?.start()
 		return true
 	}
 
 	private fun stopAudioStream() {
 		isStarted = false
-		audioRecord?.stop()
-		audioRecord?.release()
-		audioRecord = null
-		recordingThread?.interrupt()
-		recordingThread = null
 	}
 
-	private fun audioAnalyzer(){
+	@RequiresPermission(Manifest.permission.RECORD_AUDIO)
+    private fun audioAnalyzer(){
 		val encoderBytes = assets.open("flutter_assets/assets/effb2_encoder_preprocess.onnx").readBytes()
 		val decoderBytes = assets.open("flutter_assets/assets/effb2_decoder_step.onnx").readBytes()
 		audioCaptioningProcessor.initializeModels(encoderBytes, decoderBytes)
 
-		//AUDIO QUE RECIBE DE FLUTTER ( 5 sec ) .. formato wav .. 32khz .. mono stereo
-		val audioInputStream = assets.open("flutter_assets/assets/output_audio.wav")
+		val recordedWav = recordFiveSecondsWav()
+		if (recordedWav == null) {
+			Log.e("Audio", "No se pudo grabar el audio")
+			return
+		}
+		val audioInputStream = recordedWav.inputStream()
 		val audioData = AudioUtils.loadWavFile(audioInputStream)
 
 		val tokenizerInputStream = assets.open("flutter_assets/assets/tokenizer-effb2.json")
@@ -198,8 +159,15 @@ class MainActivity : FlutterActivity() {
 						topMatches.forEachIndexed { index, match ->
 							println("  ${index + 1}. ${match.category.id} (${String.format("%.4f", match.score)}) - ${match.category.label}")
 						}
-						//RETORNAR A FLUTTER COMO ALERTA
 						println("Best match: ${topMatches.firstOrNull()?.category?.id ?: "none"}")
+						
+						val bestCategoryId = topMatches.firstOrNull()?.category?.id ?: "none"
+						val updateIntent = Intent(this, MonitoringForegroundService::class.java).apply {
+							action = MonitoringForegroundService.ACTION_UPDATE
+							putExtra(MonitoringForegroundService.EXTRA_CONTENT, bestCategoryId)
+						}
+						startService(updateIntent)
+
 					} else {
 						Log.e("Category", "Failed to generate embedding")
 					}
@@ -213,6 +181,103 @@ class MainActivity : FlutterActivity() {
 		}.start()
 	}
 
+	@RequiresPermission(Manifest.permission.RECORD_AUDIO)
+    private fun recordFiveSecondsWav(): File? {
+		if (!hasAudioPermission()) return null
+
+		val targetSampleRate = 32000
+		val channelConfig = AudioFormat.CHANNEL_IN_MONO
+		val audioFormat = AudioFormat.ENCODING_PCM_16BIT
+		val minBuffer = AudioRecord.getMinBufferSize(targetSampleRate, channelConfig, audioFormat)
+		val rec = AudioRecord(
+			MediaRecorder.AudioSource.MIC,
+			targetSampleRate,
+			channelConfig,
+			audioFormat,
+			minBuffer
+		)
+		if (rec.state != AudioRecord.STATE_INITIALIZED) {
+			Log.e("Audio", "AudioRecord no inicializado")
+			return null
+		}
+
+		val durationMs = 5000
+		val totalSamples = targetSampleRate * durationMs / 1000
+		val pcmData = ByteArray(totalSamples * 2) // 16-bit mono -> 2 bytes por muestra
+
+		rec.startRecording()
+		var bytesWritten = 0
+		val tempBuffer = ByteArray(minBuffer)
+		val startTime = System.currentTimeMillis()
+		while (System.currentTimeMillis() - startTime < durationMs) {
+			val read = rec.read(tempBuffer, 0, tempBuffer.size)
+			if (read > 0) {
+				val remaining = pcmData.size - bytesWritten
+				val toCopy = if (read > remaining) remaining else read
+				if (toCopy <= 0) break
+				System.arraycopy(tempBuffer, 0, pcmData, bytesWritten, toCopy)
+				bytesWritten += toCopy
+			}
+		}
+		rec.stop()
+		rec.release()
+
+		val outFile = File(filesDir, "output_audio.wav")
+		FileOutputStream(outFile).use { fos ->
+			writeWavHeader(
+				fos,
+				pcmDataSize = bytesWritten,
+				sampleRate = targetSampleRate,
+				channels = 1,
+				bitsPerSample = 16
+			)
+			fos.write(pcmData, 0, bytesWritten)
+		}
+		return outFile
+	}
+
+	private fun writeWavHeader(
+		outputStream: FileOutputStream,
+		pcmDataSize: Int,
+		sampleRate: Int,
+		channels: Int,
+		bitsPerSample: Int) {
+		val byteRate = sampleRate * channels * bitsPerSample / 8
+		val blockAlign = channels * bitsPerSample / 8
+		val totalDataLen = pcmDataSize + 36
+
+		val header = ByteArray(44)
+		val buffer = ByteBuffer.wrap(header).order(ByteOrder.LITTLE_ENDIAN)
+
+		// ChunkID "RIFF"
+		buffer.put("RIFF".toByteArray(Charsets.US_ASCII))
+		// ChunkSize
+		buffer.putInt(totalDataLen)
+		// Format "WAVE"
+		buffer.put("WAVE".toByteArray(Charsets.US_ASCII))
+		// Subchunk1ID "fmt "
+		buffer.put("fmt ".toByteArray(Charsets.US_ASCII))
+		// Subchunk1Size 16 for PCM
+		buffer.putInt(16)
+		// AudioFormat 1 for PCM
+		buffer.putShort(1)
+		// NumChannels
+		buffer.putShort(channels.toShort())
+		// SampleRate
+		buffer.putInt(sampleRate)
+		// ByteRate
+		buffer.putInt(byteRate)
+		// BlockAlign
+		buffer.putShort(blockAlign.toShort())
+		// BitsPerSample
+		buffer.putShort(bitsPerSample.toShort())
+		// Subchunk2ID "data"
+		buffer.put("data".toByteArray(Charsets.US_ASCII))
+		// Subchunk2Size
+		buffer.putInt(pcmDataSize)
+
+		outputStream.write(header, 0, 44)
+	}
 	object AudioUtils {
 		fun loadWavFile(inputStream: InputStream): FloatArray {
 			val bytes = inputStream.readBytes()
