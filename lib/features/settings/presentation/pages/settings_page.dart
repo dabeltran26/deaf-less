@@ -36,10 +36,8 @@ class _SettingsPageState extends State<SettingsPage> {
             children: [
               Container(
                 decoration: BoxDecoration(
-                  // ignore: deprecated_member_use
                   color: color.primary.withOpacity(0.05),
                   borderRadius: BorderRadius.circular(16),
-                  // ignore: deprecated_member_use
                   border: Border.all(color: color.primary.withOpacity(0.15)),
                 ),
                 padding: const EdgeInsets.all(16),

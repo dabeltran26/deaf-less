@@ -31,6 +31,7 @@ class MainActivity : FlutterActivity() {
 
     private var isStarted = false
     private var eventSink: EventChannel.EventSink? = null
+    private var enabledSoundIds: List<String> = emptyList()
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -51,7 +52,6 @@ class MainActivity : FlutterActivity() {
                             result.error("NO_PERMISSION", "RECORD_AUDIO permission not granted", null)
                         }
                     }
-
                     "stopMonitoring" -> {
                         stopAudioStream()
                         val stopIntent = Intent(this, MonitoringForegroundService::class.java).apply {
@@ -60,7 +60,6 @@ class MainActivity : FlutterActivity() {
                         startService(stopIntent)
                         result.success(true)
                     }
-
                     "updateNotification" -> {
                         val content = call.argument<String>("content") ?: ""
                         val updateIntent = Intent(this, MonitoringForegroundService::class.java).apply {
@@ -70,7 +69,12 @@ class MainActivity : FlutterActivity() {
                         startService(updateIntent)
                         result.success(true)
                     }
-
+                    "setEnabledSoundIds" -> {
+                        val ids = call.argument<List<String>>("ids") ?: emptyList()
+                        enabledSoundIds = ids
+                        Log.d("MainActivity", "EnabledSoundIds updated: $enabledSoundIds")
+                        result.success(true)
+                    }
                     else -> result.notImplemented()
                 }
             }
@@ -118,7 +122,7 @@ class MainActivity : FlutterActivity() {
     }
 
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
-    private fun analyzerAudio(){
+    private fun analyzerAudio() {
         val recordedWav = recordFiveSecondsWav()
         if (recordedWav == null) {
             Log.e("Audio", "No se pudo grabar el audio")
@@ -138,9 +142,10 @@ class MainActivity : FlutterActivity() {
                     val bertTokenizer = BertTokenizer(this)
                     val embeddingModel = SentenceTransformerEmbeddingModel(this)
                     val categoryMatcher = CategoryMatcher(this)
-                    assets.open("flutter_assets/assets/tokenizer-sentence_transformers.json").use { bertTokenizerStream ->
-                        bertTokenizer.loadTokenizer(bertTokenizerStream)
-                    }
+                    assets.open("flutter_assets/assets/tokenizer-sentence_transformers.json")
+                        .use { bertTokenizerStream ->
+                            bertTokenizer.loadTokenizer(bertTokenizerStream)
+                        }
 
                     val embeddingModelFile = File(filesDir, "sentence_transformers_minilm.pte")
                     if (!embeddingModelFile.exists()) {
@@ -190,7 +195,7 @@ class MainActivity : FlutterActivity() {
         }.start()
     }
 
-    private fun initializeModels(){
+    private fun initializeModels() {
         val decoderFile = File(filesDir, "effb2_decoder_5sec.pte")
         if (!decoderFile.exists()) {
             try {
@@ -262,7 +267,8 @@ class MainActivity : FlutterActivity() {
 
         // Export to Downloads for debugging
         try {
-            val downloadsDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
+            val downloadsDir =
+                android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
             val debugFile = File(downloadsDir, "debug_output_audio.wav")
             if (debugFile.exists()) {
                 debugFile.delete()

@@ -38,4 +38,12 @@ class AudioChannel {
       // Ignore on platforms without implementation
     }
   }
+
+  static Future<void> setEnabledSoundIds(List<String> ids) async {
+    try {
+      await _method.invokeMethod('setEnabledSoundIds', {'ids': ids});
+    } catch (_) {
+      // Ignore on platforms without implementation
+    }
+  }
 }

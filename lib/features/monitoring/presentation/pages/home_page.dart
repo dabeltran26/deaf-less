@@ -25,6 +25,7 @@ class _HomePageState extends State<HomePage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _cubit.checkDeviceArchitecture();
     });
+    _cubit.sendEnabledSoundIds(_cubit.enabledSoundIds);
   }
 
   @override

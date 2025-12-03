@@ -3,8 +3,10 @@ import 'dart:io';
 
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:hive/hive.dart';
 import '../../../../core/platform/audio/audio_channel.dart';
 import '../../../monitoring/domain/entities/monitoring_status.dart';
+import '../../../../core/preferences/sound_preferences.dart';
 
 class MonitoringState {
   const MonitoringState(this.status, {this.isSupported = true});
@@ -20,6 +22,10 @@ class MonitoringCubit extends Cubit<MonitoringState> {
           isSupported: true,
         ),
       );
+
+  List<String> enabledSoundIds = SoundPreferencesRepository(
+    Hive.box('preferences'),
+  ).enabledSoundIds;
 
   StreamSubscription<double>? _sub;
   DateTime? _lastNotifAt;
@@ -74,5 +80,12 @@ class MonitoringCubit extends Cubit<MonitoringState> {
     } else {
       emit(MonitoringState(state.status, isSupported: false));
     }
+  }
+
+  Future<void> sendEnabledSoundIds(List<String> ids) async {
+    // Send enabled sound IDs to Android before starting monitoring
+    try {
+      await AudioChannel.setEnabledSoundIds(enabledSoundIds);
+    } catch (_) {}
   }
 }
