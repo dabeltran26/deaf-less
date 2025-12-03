@@ -19,8 +19,6 @@ import io.flutter.plugin.common.MethodChannel
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
-import kotlin.math.log10
-import kotlin.math.sqrt
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
@@ -104,7 +102,7 @@ class MainActivity : FlutterActivity() {
         if (isStarted) return true
         audioCaptioningProcessor = AudioCaptioningProcessor()
         if (!hasAudioPermission()) return false
-        audioAnalyzer()
+        startAudioAnalyzer()
         isStarted = true
         return true
     }
@@ -114,8 +112,78 @@ class MainActivity : FlutterActivity() {
     }
 
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
-    private fun audioAnalyzer() {
+    private fun startAudioAnalyzer() {
+        initializeModels()
+        analyzerAudio()
+    }
 
+    @RequiresPermission(Manifest.permission.RECORD_AUDIO)
+    private fun analyzerAudio(){
+        val recordedWav = recordFiveSecondsWav()
+        if (recordedWav == null) {
+            Log.e("Audio", "No se pudo grabar el audio")
+            return
+        }
+        val audioData = recordedWav.inputStream().use { audioInputStream ->
+            AudioUtils.loadWavFile(audioInputStream)
+        }
+        val tokenizer = assets.open("flutter_assets/assets/tokenizer-effb2.json").use { tokenizerInputStream ->
+            AudioCapsTokenizer(this, tokenizerInputStream)
+        }
+        Thread {
+            try {
+                val tokenIds = audioCaptioningProcessor.generateCaption(audioData)
+                val caption = tokenizer.decode(tokenIds)
+                try {
+                    val bertTokenizer = BertTokenizer(this)
+                    val embeddingModel = SentenceTransformerEmbeddingModel(this)
+                    val categoryMatcher = CategoryMatcher(this)
+                    assets.open("flutter_assets/assets/tokenizer-sentence_transformers.json").use { bertTokenizerStream ->
+                        bertTokenizer.loadTokenizer(bertTokenizerStream)
+                    }
+
+                    val embeddingModelFile = File(filesDir, "sentence_transformers_minilm.pte")
+                    if (!embeddingModelFile.exists()) {
+                        assets.open("flutter_assets/assets/sentence_transformers_minilm.pte").use { input ->
+                            FileOutputStream(embeddingModelFile).use { output ->
+                                input.copyTo(output)
+                            }
+                        }
+                    }
+                    embeddingModel.loadModel(embeddingModelFile.absolutePath)
+
+                    assets.open("flutter_assets/assets/category_embeddings.json").use { categoryStream ->
+                        categoryMatcher.loadCategories(categoryStream)
+                    }
+
+                    Log.d("MainActivity", "Generated Caption: '$caption'")
+
+                    val (inputIds, attentionMask, _) = bertTokenizer.encode(caption)
+                    val embedding = embeddingModel.generateEmbedding(inputIds, attentionMask)
+
+                    if (embedding != null) {
+                        val topMatches = categoryMatcher.findTopMatches(embedding, topN = 3)
+                        val bestCategoryId = topMatches.firstOrNull()?.category?.id ?: "none"
+                        val updateIntent = Intent(this, MonitoringForegroundService::class.java).apply {
+                            action = MonitoringForegroundService.ACTION_UPDATE
+                            putExtra(MonitoringForegroundService.EXTRA_CONTENT, bestCategoryId)
+                        }
+                        startService(updateIntent)
+                        analyzerAudio()
+                    } else {
+                        Log.e("Category", "Failed to generate embedding")
+                    }
+                } catch (e: Exception) {
+                    Log.e("Category", "Categorization error", e)
+                    e.printStackTrace()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }.start()
+    }
+
+    private fun initializeModels(){
         val decoderFile = File(filesDir, "effb2_decoder_5sec.pte")
         if (!decoderFile.exists()) {
             try {
@@ -128,98 +196,8 @@ class MainActivity : FlutterActivity() {
                 Log.e("MainActivity", "Error copying decoder model", e)
             }
         }
-
         val encoderBytes = assets.open("flutter_assets/assets/effb2_encoder_preprocess.onnx").readBytes()
         audioCaptioningProcessor.initializeModels(encoderBytes, decoderFile.absolutePath)
-
-        //AUDIO QUE RECIBE DE FLUTTER ( 5 sec ) .. formato wav .. 32khz .. mono stereo
-        //val audioInputStream = assets.open("flutter_assets/assets/dog.wav")
-        val recordedWav = recordFiveSecondsWav()
-        if (recordedWav == null) {
-            Log.e("Audio", "No se pudo grabar el audio")
-            return
-        }
-        val audioInputStream = recordedWav.inputStream()
-        val audioData = AudioUtils.loadWavFile(audioInputStream)
-
-        val tokenizerInputStream = assets.open("flutter_assets/assets/tokenizer-effb2.json")
-        val tokenizer = AudioCapsTokenizer(this, tokenizerInputStream)
-
-        Thread {
-            try {
-                val tokenIds = audioCaptioningProcessor.generateCaption(audioData)
-                val caption = tokenizer.decode(tokenIds)
-                try {
-                    val bertTokenizer = BertTokenizer(this)
-                    val embeddingModel = SentenceTransformerEmbeddingModel(this)
-                    val categoryMatcher = CategoryMatcher(this)
-
-                    val bertTokenizerStream = assets.open("flutter_assets/assets/tokenizer-sentence_transformers.json")
-                    bertTokenizer.loadTokenizer(bertTokenizerStream)
-
-                    val embeddingModelFile = File(filesDir, "sentence_transformers_minilm.pte")
-                    if (!embeddingModelFile.exists()) {
-                        assets.open("flutter_assets/assets/sentence_transformers_minilm.pte").use { input ->
-                            FileOutputStream(embeddingModelFile).use { output ->
-                                input.copyTo(output)
-                            }
-                        }
-                    }
-                    embeddingModel.loadModel(embeddingModelFile.absolutePath)
-
-                    val categoryStream = assets.open("flutter_assets/assets/category_embeddings.json")
-                    categoryMatcher.loadCategories(categoryStream)
-
-                    Log.d("MainActivity", "Generated Caption: '$caption'")
-
-                    val (inputIds, attentionMask, _) = bertTokenizer.encode(caption)
-                    val embedding = embeddingModel.generateEmbedding(inputIds, attentionMask)
-
-                    if (embedding != null) {
-                        val topMatches = categoryMatcher.findTopMatches(embedding, topN = 3)
-                        Log.d("Caption", "'$caption'")
-                        topMatches.forEachIndexed { index, match ->
-                            Log.d(
-                                "Category",
-                                "  ${index + 1}. ${match.category.id} (${
-                                    String.format(
-                                        "%.4f",
-                                        match.score
-                                    )
-                                }) - ${match.category.label}"
-                            )
-                        }
-                        Log.d("Category", "Best match: ${topMatches.firstOrNull()?.category?.id ?: "none"}")
-                        topMatches.forEachIndexed { index, match ->
-                            println(
-                                "  ${index + 1}. ${match.category.id} (${
-                                    String.format(
-                                        "%.4f",
-                                        match.score
-                                    )
-                                }) - ${match.category.label}"
-                            )
-                        }
-                        println("Best match: ${topMatches.firstOrNull()?.category?.id ?: "none"}")
-
-                        val bestCategoryId = topMatches.firstOrNull()?.category?.id ?: "none"
-                        val updateIntent = Intent(this, MonitoringForegroundService::class.java).apply {
-                            action = MonitoringForegroundService.ACTION_UPDATE
-                            putExtra(MonitoringForegroundService.EXTRA_CONTENT, bestCategoryId)
-                        }
-                        startService(updateIntent)
-
-                    } else {
-                        Log.e("Category", "Failed to generate embedding")
-                    }
-                } catch (e: Exception) {
-                    Log.e("Category", "Categorization error", e)
-                    e.printStackTrace()
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }.start()
     }
 
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
