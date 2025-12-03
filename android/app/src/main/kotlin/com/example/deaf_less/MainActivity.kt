@@ -163,11 +163,18 @@ class MainActivity : FlutterActivity() {
 
                     if (embedding != null) {
                         val topMatches = categoryMatcher.findTopMatches(embedding, topN = 3)
-                        val bestCategoryId = topMatches.firstOrNull()?.category?.id ?: "none"
+                        val firstMatch = topMatches.firstOrNull()
+                        val bestCategoryId = if (firstMatch != null && firstMatch.score >= 0.7) {
+                            firstMatch.category.label
+                        } else {
+                            "Nothing"
+                        }
+                        Log.d("MainActivity", "Top match score: ${firstMatch?.score}, Selected: $bestCategoryId")
                         val updateIntent = Intent(this, MonitoringForegroundService::class.java).apply {
                             action = MonitoringForegroundService.ACTION_UPDATE
                             putExtra(MonitoringForegroundService.EXTRA_CONTENT, bestCategoryId)
                         }
+                        Log.d("MainActivity", "Best Category ID: '$topMatches'")
                         startService(updateIntent)
                         analyzerAudio()
                     } else {
