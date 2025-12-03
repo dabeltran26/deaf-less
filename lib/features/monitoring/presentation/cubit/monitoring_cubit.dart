@@ -1,12 +1,15 @@
 import 'dart:async';
+import 'dart:io';
 
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../core/platform/audio/audio_channel.dart';
 import '../../../monitoring/domain/entities/monitoring_status.dart';
 
 class MonitoringState {
-  const MonitoringState(this.status);
+  const MonitoringState(this.status, {this.isSupported = true});
   final MonitoringStatus status;
+  final bool isSupported;
 }
 
 class MonitoringCubit extends Cubit<MonitoringState> {
@@ -14,6 +17,7 @@ class MonitoringCubit extends Cubit<MonitoringState> {
     : super(
         const MonitoringState(
           MonitoringStatus(isActive: false, permissionGranted: true),
+          isSupported: true,
         ),
       );
 
@@ -44,12 +48,31 @@ class MonitoringCubit extends Cubit<MonitoringState> {
     await AudioChannel.stop();
     await _sub?.cancel();
     _lastNotifAt = null;
-    emit(MonitoringState(state.status.copyWith(isActive: false)));
+    emit(
+      MonitoringState(
+        state.status.copyWith(isActive: false),
+        isSupported: state.isSupported,
+      ),
+    );
   }
 
   @override
   Future<void> close() {
     _sub?.cancel();
     return super.close();
+  }
+
+  Future<void> checkDeviceArchitecture() async {
+    if (Platform.isAndroid) {
+      final deviceInfo = DeviceInfoPlugin();
+      final androidInfo = await deviceInfo.androidInfo;
+      List<String> supportedAbis = androidInfo.supportedAbis;
+      bool isArm = supportedAbis.any(
+        (abi) => abi.contains('arm') || abi.contains('ARM'),
+      );
+      emit(MonitoringState(state.status, isSupported: isArm));
+    } else {
+      emit(MonitoringState(state.status, isSupported: false));
+    }
   }
 }

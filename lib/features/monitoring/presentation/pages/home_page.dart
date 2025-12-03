@@ -9,14 +9,35 @@ import 'package:deaf_less/core/constants/app_strings.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'dart:io' show Platform;
 
-class HomePage extends StatelessWidget {
+class HomePage extends StatefulWidget {
   const HomePage({super.key});
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  late final MonitoringCubit _cubit;
+
+  @override
+  void initState() {
+    super.initState();
+    _cubit = MonitoringCubit();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _cubit.checkDeviceArchitecture();
+    });
+  }
+
+  @override
+  void dispose() {
+    _cubit.close();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final color = Theme.of(context).colorScheme;
     return BlocProvider(
-      create: (_) => MonitoringCubit(),
+      create: (_) => _cubit,
       child: Scaffold(
         appBar: AppBar(
           title: const Text(AppStrings.appTitle),
@@ -33,6 +54,24 @@ class HomePage extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
+              BlocBuilder<MonitoringCubit, MonitoringState>(
+                builder: (context, state) {
+                  if (!state.isSupported) {
+                    return Card(
+                      color: Theme.of(context).colorScheme.errorContainer,
+                      child: const Padding(
+                        padding: EdgeInsets.all(12.0),
+                        child: Text(
+                          'This device architecture is not supported to run the AI model.',
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    );
+                  }
+                  return const SizedBox.shrink();
+                },
+              ),
+              const SizedBox(height: 20),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 crossAxisAlignment: CrossAxisAlignment.end,
@@ -103,68 +142,77 @@ class HomePage extends StatelessWidget {
         ),
         bottomNavigationBar: SafeArea(
           minimum: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-          child: ValueListenableBuilder(
-            valueListenable: Hive.box(
-              'preferences',
-            ).listenable(keys: [PrefKeys.recordingActive]),
-            builder: (context, Box box, _) {
-              final bool isRecording =
-                  (box.get(PrefKeys.recordingActive) as bool?) ?? false;
-              return SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  icon: Icon(
-                    size: 40,
-                    isRecording
-                        ? Icons.stop_circle_outlined
-                        : Icons.mic_none_rounded,
-                  ),
-                  label: Text(
-                    style: Theme.of(context).textTheme.titleLarge,
-                    isRecording
-                        ? AppStrings.stopListeningButton
-                        : AppStrings.startListeningButton,
-                  ),
-                  onPressed: () async {
-                    final cubit = context.read<MonitoringCubit>();
-                    await cubit.start();
-                    await box.put(PrefKeys.recordingActive, true);
-                    if (!isRecording) {
-                      // Solicitar directamente el permiso de micrófono
-                      final micStatus = await Permission.microphone.request();
-
-                      if (micStatus.isGranted) {
-                        // Solicitar permiso de notificaciones solo en Android (para alertas) - no bloquea el inicio
-                        if (Platform.isAndroid) {
-                          await Permission.notification.request();
-                        }
-                        await cubit.start();
-                        await box.put(PrefKeys.recordingActive, true);
-                      } else if (micStatus.isDenied) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(AppStrings.micPermissionRequired),
-                          ),
-                        );
-                      } else if (micStatus.isPermanentlyDenied ||
-                          micStatus.isRestricted ||
-                          micStatus.isLimited) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(AppStrings.micPermissionDenied),
-                          ),
-                        );
-                        openAppSettings();
-                      }
-                    } else {
-                      await cubit.stop();
-                      await box.put(PrefKeys.recordingActive, false);
-                    }
-                  },
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 18),
-                  ),
-                ),
+          child: BlocBuilder<MonitoringCubit, MonitoringState>(
+            builder: (context, state) {
+              return ValueListenableBuilder(
+                valueListenable: Hive.box(
+                  'preferences',
+                ).listenable(keys: [PrefKeys.recordingActive]),
+                builder: (context, Box box, _) {
+                  final bool isRecording =
+                      (box.get(PrefKeys.recordingActive) as bool?) ?? false;
+                  final bool isSupported = state.isSupported;
+                  return SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      icon: Icon(
+                        size: 40,
+                        isRecording
+                            ? Icons.stop_circle_outlined
+                            : Icons.mic_none_rounded,
+                      ),
+                      label: Text(
+                        style: Theme.of(context).textTheme.titleLarge,
+                        isRecording
+                            ? AppStrings.stopListeningButton
+                            : AppStrings.startListeningButton,
+                      ),
+                      onPressed: !isSupported
+                          ? null
+                          : () async {
+                              final cubit = context.read<MonitoringCubit>();
+                              await cubit.start();
+                              await box.put(PrefKeys.recordingActive, true);
+                              if (!isRecording) {
+                                final micStatus = await Permission.microphone
+                                    .request();
+                                if (micStatus.isGranted) {
+                                  if (Platform.isAndroid) {
+                                    await Permission.notification.request();
+                                  }
+                                  await cubit.start();
+                                  await box.put(PrefKeys.recordingActive, true);
+                                } else if (micStatus.isDenied) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        AppStrings.micPermissionRequired,
+                                      ),
+                                    ),
+                                  );
+                                } else if (micStatus.isPermanentlyDenied ||
+                                    micStatus.isRestricted ||
+                                    micStatus.isLimited) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        AppStrings.micPermissionDenied,
+                                      ),
+                                    ),
+                                  );
+                                  openAppSettings();
+                                }
+                              } else {
+                                await cubit.stop();
+                                await box.put(PrefKeys.recordingActive, false);
+                              }
+                            },
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 18),
+                      ),
+                    ),
+                  );
+                },
               );
             },
           ),
