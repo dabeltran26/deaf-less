@@ -5,6 +5,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:deaf_less/core/preferences/sound_preferences.dart';
+import 'package:deaf_less/core/constants/app_strings.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'dart:io' show Platform;
 
@@ -18,12 +19,12 @@ class HomePage extends StatelessWidget {
       create: (_) => MonitoringCubit(),
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Deaf Less'),
+          title: const Text(AppStrings.appTitle),
           actions: [
             IconButton(
               icon: const Icon(Icons.settings_outlined),
               onPressed: () => context.push('/settings'),
-              tooltip: 'Ajustes',
+              tooltip: AppStrings.settingsTooltip,
             ),
           ],
         ),
@@ -58,7 +59,7 @@ class HomePage extends StatelessWidget {
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      'Enterate de lo que pasa a tu alrededor',
+                      AppStrings.homeHeroMessage,
                       style: Theme.of(context).textTheme.titleLarge,
                       textAlign: TextAlign.left,
                     ),
@@ -70,7 +71,7 @@ class HomePage extends StatelessWidget {
                 child: Padding(
                   padding: const EdgeInsets.all(8.0),
                   child: Text(
-                    'Tu asistente de seguridad auditiva que monitorea constantemente los sonidos ambientales y te alerta cuando detecta ruidos importantes',
+                    AppStrings.homeDescription,
                     style: Theme.of(context).textTheme.bodyLarge,
                     textAlign: TextAlign.center,
                   ),
@@ -79,9 +80,8 @@ class HomePage extends StatelessWidget {
               const SizedBox(height: 12),
               ItemCardWidget(
                 leading: Icon(Icons.shield_outlined, color: color.primary),
-                title: 'Monitoreo 24/7',
-                subtitle:
-                    'Escucha activa en segundo plano sin interrumpir tus actividades',
+                title: AppStrings.feature247Title,
+                subtitle: AppStrings.feature247Subtitle,
               ),
               const SizedBox(height: 12),
               ItemCardWidget(
@@ -89,15 +89,14 @@ class HomePage extends StatelessWidget {
                   Icons.notifications_none_rounded,
                   color: color.primary,
                 ),
-                title: 'Alertas Inteligentes',
-                subtitle:
-                    'Notificaciones instantáneas cuando detectamos sonidos configurados',
+                title: AppStrings.featureAlertsTitle,
+                subtitle: AppStrings.featureAlertsSubtitle,
               ),
               const SizedBox(height: 12),
               ItemCardWidget(
                 leading: Icon(Icons.volume_up_outlined, color: color.primary),
-                title: '100% Personalizable',
-                subtitle: 'Configura exactamente qué sonidos quieres detectar',
+                title: AppStrings.featureCustomizableTitle,
+                subtitle: AppStrings.featureCustomizableSubtitle,
               ),
             ],
           ),
@@ -122,7 +121,9 @@ class HomePage extends StatelessWidget {
                   ),
                   label: Text(
                     style: Theme.of(context).textTheme.titleLarge,
-                    isRecording ? 'No escuchar más' : 'Empezar a escuchar',
+                    isRecording
+                        ? AppStrings.stopListeningButton
+                        : AppStrings.startListeningButton,
                   ),
                   onPressed: () async {
                     final cubit = context.read<MonitoringCubit>();
@@ -142,9 +143,7 @@ class HomePage extends StatelessWidget {
                       } else if (micStatus.isDenied) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
-                            content: Text(
-                              'Necesitamos el permiso de micrófono para empezar a escuchar.',
-                            ),
+                            content: Text(AppStrings.micPermissionRequired),
                           ),
                         );
                       } else if (micStatus.isPermanentlyDenied ||
@@ -152,9 +151,7 @@ class HomePage extends StatelessWidget {
                           micStatus.isLimited) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
-                            content: Text(
-                              'Permiso de micrófono denegado. Actívalo en Ajustes para continuar.',
-                            ),
+                            content: Text(AppStrings.micPermissionDenied),
                           ),
                         );
                         openAppSettings();

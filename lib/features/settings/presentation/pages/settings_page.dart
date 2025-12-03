@@ -2,6 +2,7 @@ import 'package:deaf_less/features/settings/presentation/widgets/sount_tile_widg
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../../../../core/preferences/sound_preferences.dart';
+import '../../../../core/constants/app_strings.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -23,7 +24,7 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget build(BuildContext context) {
     final color = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: const Text('Configuración')),
+      appBar: AppBar(title: const Text(AppStrings.settingsTitle)),
       body: ValueListenableBuilder(
         valueListenable: Hive.box(
           'preferences',
@@ -49,7 +50,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        'Activa solo los sonidos que consideres importantes. Recibirás notificaciones cuando se detecten.',
+                        AppStrings.settingsInfoMessage,
                         style: Theme.of(context).textTheme.bodyMedium,
                       ),
                     ),
@@ -58,7 +59,7 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
               const SizedBox(height: 24),
               Text(
-                'Sonidos Detectables',
+                AppStrings.detectableSoundsHeader,
                 style: Theme.of(context).textTheme.titleLarge,
               ),
               const SizedBox(height: 12),

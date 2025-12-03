@@ -26,28 +26,53 @@ class DetectableSound {
 class SoundCatalog {
   static final List<DetectableSound> all = [
     DetectableSound(
-      id: 'fire_alarm',
-      label: 'Alarma de incendio',
-      icon: Icons.campaign_outlined,
-    ),
-    DetectableSound(
-      id: 'baby_cry',
-      label: 'Llanto de bebé',
-      icon: Icons.child_care_outlined,
-    ),
-    DetectableSound(
-      id: 'glass_break',
-      label: 'Rotura de vidrio',
-      icon: Icons.wine_bar_outlined,
-    ),
-    DetectableSound(
       id: 'dog_bark',
-      label: 'Ladrido de perro',
+      label: 'Bark of a dog',
       icon: Icons.pets_outlined,
     ),
     DetectableSound(
-      id: 'loud_bang',
-      label: 'Golpe fuerte',
+      id: 'doorbell',
+      label: 'Doorbell ringing',
+      icon: Icons.doorbell_outlined,
+    ),
+    DetectableSound(
+      id: 'baby_crying',
+      label: 'Baby crying',
+      icon: Icons.child_care_outlined,
+    ),
+    DetectableSound(
+      id: 'glass_breaking',
+      label: 'Glass breaking',
+      icon: Icons.wine_bar_outlined,
+    ),
+    DetectableSound(
+      id: 'car_horn',
+      label: 'Car horn',
+      icon: Icons.car_rental_outlined,
+    ),
+    DetectableSound(
+      id: 'alarm_clock',
+      label: 'Alarm clock',
+      icon: Icons.alarm_outlined,
+    ),
+    DetectableSound(
+      id: 'fire_alarm',
+      label: 'Fire alarm',
+      icon: Icons.local_fire_department_outlined,
+    ),
+    DetectableSound(
+      id: 'door_closing',
+      label: 'Door or window closing',
+      icon: Icons.meeting_room_outlined,
+    ),
+    DetectableSound(
+      id: 'door_opening',
+      label: 'Door or window opening',
+      icon: Icons.meeting_room_outlined,
+    ),
+    DetectableSound(
+      id: 'stagger_swipe',
+      label: 'Stagger or swipe',
       icon: Icons.warning_amber_outlined,
     ),
   ];

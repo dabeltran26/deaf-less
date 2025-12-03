@@ -259,6 +259,24 @@ class MainActivity : FlutterActivity() {
             )
             fos.write(pcmData, 0, bytesWritten)
         }
+
+        // Export to Downloads for debugging
+        try {
+            val downloadsDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
+            val debugFile = File(downloadsDir, "debug_output_audio.wav")
+            if (debugFile.exists()) {
+                debugFile.delete()
+            }
+            outFile.inputStream().use { input ->
+                FileOutputStream(debugFile).use { output ->
+                    input.copyTo(output)
+                }
+            }
+            Log.d("Audio", "Exported debug audio to: ${debugFile.absolutePath}")
+        } catch (e: Exception) {
+            Log.e("Audio", "Failed to export debug audio", e)
+        }
+
         return outFile
     }
 
