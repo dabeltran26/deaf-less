@@ -1,9 +1,12 @@
 package com.example.deaf_less
 
 import AudioCapsTokenizer
+import android.content.ContentValues
 import android.content.Intent
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.os.Build
+import android.provider.MediaStore
 import android.media.AudioFormat
 import android.Manifest
 import android.content.pm.PackageManager
@@ -169,8 +172,17 @@ class MainActivity : FlutterActivity() {
                     if (embedding != null) {
                         val topMatches = categoryMatcher.findTopMatches(embedding, topN = 3)
                         val firstMatch = topMatches.firstOrNull()
-                        val bestCategoryId = if (firstMatch != null && firstMatch.score >= 0.7) {
-                            firstMatch.category.label
+                        
+                        // Get the category ID from the match
+                        val detectedCategoryId = if (firstMatch != null && firstMatch.score >= 0.6) {
+                            firstMatch.category.id
+                        } else {
+                            null
+                        }
+                        
+                        // Filter based on enabledSoundIds
+                        val bestCategoryId = if (detectedCategoryId != null && enabledSoundIds.contains(detectedCategoryId)) {
+                            detectedCategoryId
                         } else {
                             "Nothing"
                         }
@@ -265,20 +277,40 @@ class MainActivity : FlutterActivity() {
             fos.write(pcmData, 0, bytesWritten)
         }
 
-        // Export to Downloads for debugging
+        // Export to Downloads for debugging using MediaStore (Android 10+ compatible)
         try {
-            val downloadsDir =
-                android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
-            val debugFile = File(downloadsDir, "debug_output_audio.wav")
-            if (debugFile.exists()) {
-                debugFile.delete()
-            }
-            outFile.inputStream().use { input ->
-                FileOutputStream(debugFile).use { output ->
-                    input.copyTo(output)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                // Use MediaStore for Android 10+
+                val values = ContentValues().apply {
+                    put(MediaStore.Downloads.DISPLAY_NAME, "debug_output_audio.wav")
+                    put(MediaStore.Downloads.MIME_TYPE, "audio/wav")
+                    put(MediaStore.Downloads.RELATIVE_PATH, "Download/")
                 }
+                
+                val uri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                uri?.let {
+                    contentResolver.openOutputStream(it)?.use { outputStream ->
+                        outFile.inputStream().use { input ->
+                            input.copyTo(outputStream)
+                        }
+                    }
+                    Log.d("Audio", "Exported debug audio to Downloads via MediaStore")
+                }
+            } else {
+                // Fallback for Android 9 and below
+                val downloadsDir =
+                    android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
+                val debugFile = File(downloadsDir, "debug_output_audio.wav")
+                if (debugFile.exists()) {
+                    debugFile.delete()
+                }
+                outFile.inputStream().use { input ->
+                    FileOutputStream(debugFile).use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                Log.d("Audio", "Exported debug audio to: ${debugFile.absolutePath}")
             }
-            Log.d("Audio", "Exported debug audio to: ${debugFile.absolutePath}")
         } catch (e: Exception) {
             Log.e("Audio", "Failed to export debug audio", e)
         }
