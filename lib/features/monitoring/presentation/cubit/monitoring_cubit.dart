@@ -47,7 +47,7 @@ class MonitoringCubit extends Cubit<MonitoringState> {
         );
       }
     });
-    await AudioChannel.updateNotification('No hay novedades :D');
+    await AudioChannel.updateNotification('Nothing');
   }
 
   Future<void> stop() async {

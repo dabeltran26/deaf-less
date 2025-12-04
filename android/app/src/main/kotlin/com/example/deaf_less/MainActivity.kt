@@ -37,7 +37,6 @@ class MainActivity : FlutterActivity() {
     private var eventSink: EventChannel.EventSink? = null
     private var enabledSoundIds: List<String> = emptyList()
 
-    // Variables para cargar los modelos una sola vez
     private var tokenizer: AudioCapsTokenizer? = null
     private var bertTokenizer: BertTokenizer? = null
     private var embeddingModel: SentenceTransformerEmbeddingModel? = null
@@ -97,14 +96,11 @@ class MainActivity : FlutterActivity() {
                 override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
                     Log.d("EventChannel", "onListen called")
                     eventSink = events
-                    // NO llamar startAudioStream aquí, solo asignar el sink
                 }
 
                 override fun onCancel(arguments: Any?) {
                     Log.d("EventChannel", "onCancel called")
                     eventSink = null
-                    // NO detener el audio aquí, solo limpiar el eventSink
-                    // El monitoreo se controla desde startMonitoring/stopMonitoring
                 }
             })
     }
@@ -125,7 +121,7 @@ class MainActivity : FlutterActivity() {
         audioCaptioningProcessor = AudioCaptioningProcessor()
         if (!hasAudioPermission()) return false
 
-        isStarted = true  // Mover ANTES de startAudioAnalyzer
+        isStarted = true 
         Log.d("Audio", "isStarted set to TRUE")
         startAudioAnalyzer()
         return true
@@ -139,13 +135,11 @@ class MainActivity : FlutterActivity() {
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     private fun startAudioAnalyzer() {
         Log.d("Audio", "startAudioAnalyzer called, isStarted = $isStarted")
-        // Inicializar modelos en background
         coroutineScope.launch(Dispatchers.IO) {
             try {
                 initializeModels()
                 initializeTokenizers()
 
-                // Una vez inicializados, comenzar el análisis
                 withContext(Dispatchers.Main) {
                     Log.d("Audio", "Models initialized, starting analyzerAudio loop, isStarted = $isStarted")
                     analyzerAudio()
@@ -205,10 +199,8 @@ class MainActivity : FlutterActivity() {
 
         Log.d("Audio", "Starting audio analysis cycle")
 
-        // Mover TODO el proceso al background thread
         coroutineScope.launch(Dispatchers.IO) {
             try {
-                // Verificar que los modelos estén inicializados
                 if (tokenizer == null || bertTokenizer == null || embeddingModel == null || categoryMatcher == null) {
                     Log.e("Audio", "Models not initialized yet, waiting...")
                     delay(1000)
@@ -218,7 +210,6 @@ class MainActivity : FlutterActivity() {
                     return@launch
                 }
 
-                // Grabar audio (esto toma 5 segundos)
                 val recordedWav = recordFiveSecondsWav()
                 if (recordedWav == null) {
                     Log.e("Audio", "No se pudo grabar el audio, reintentando...")
@@ -254,7 +245,6 @@ class MainActivity : FlutterActivity() {
                         null
                     }
 
-                    // Filter based on enabledSoundIds
                     val bestCategoryId = if (detectedCategoryId != null && enabledSoundIds.contains(detectedCategoryId)) {
                         detectedCategoryId
                     } else {
@@ -264,7 +254,6 @@ class MainActivity : FlutterActivity() {
                     Log.d("MainActivity", "Top match score: ${firstMatch?.score}, Selected: $bestCategoryId")
                     Log.d("MainActivity", "Top matches: '$topMatches'")
 
-                    // Actualizar notificación
                     val updateIntent = Intent(this@MainActivity, MonitoringForegroundService::class.java).apply {
                         action = MonitoringForegroundService.ACTION_UPDATE
                         putExtra(MonitoringForegroundService.EXTRA_CONTENT, bestCategoryId)
@@ -278,7 +267,6 @@ class MainActivity : FlutterActivity() {
 
                 Log.d("Audio", "Analysis complete, scheduling next cycle")
 
-                // Continuar con el siguiente análisis (siempre)
                 withContext(Dispatchers.Main) {
                     if (isStarted) {
                         analyzerAudio()
@@ -290,7 +278,6 @@ class MainActivity : FlutterActivity() {
                 Log.e("Audio", "Error in analysis cycle", e)
                 e.printStackTrace()
 
-                // Reintentar incluso si hay error
                 delay(500)
                 withContext(Dispatchers.Main) {
                     if (isStarted) {
@@ -341,7 +328,7 @@ class MainActivity : FlutterActivity() {
 
         val durationMs = 5000
         val totalSamples = targetSampleRate * durationMs / 1000
-        val pcmData = ByteArray(totalSamples * 2) // 16-bit mono -> 2 bytes por muestra
+        val pcmData = ByteArray(totalSamples * 2) // 16-bit mono -> 2 bytes per sample
 
         rec.startRecording()
         var bytesWritten = 0
@@ -372,44 +359,6 @@ class MainActivity : FlutterActivity() {
             fos.write(pcmData, 0, bytesWritten)
         }
 
-        // Export to Downloads for debugging using MediaStore (Android 10+ compatible)
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                // Use MediaStore for Android 10+
-                val values = ContentValues().apply {
-                    put(MediaStore.Downloads.DISPLAY_NAME, "debug_output_audio.wav")
-                    put(MediaStore.Downloads.MIME_TYPE, "audio/wav")
-                    put(MediaStore.Downloads.RELATIVE_PATH, "Download/")
-                }
-
-                val uri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-                uri?.let {
-                    contentResolver.openOutputStream(it)?.use { outputStream ->
-                        outFile.inputStream().use { input ->
-                            input.copyTo(outputStream)
-                        }
-                    }
-                    Log.d("Audio", "Exported debug audio to Downloads via MediaStore")
-                }
-            } else {
-                // Fallback for Android 9 and below
-                val downloadsDir =
-                    android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
-                val debugFile = File(downloadsDir, "debug_output_audio.wav")
-                if (debugFile.exists()) {
-                    debugFile.delete()
-                }
-                outFile.inputStream().use { input ->
-                    FileOutputStream(debugFile).use { output ->
-                        input.copyTo(output)
-                    }
-                }
-                Log.d("Audio", "Exported debug audio to: ${debugFile.absolutePath}")
-            }
-        } catch (e: Exception) {
-            Log.e("Audio", "Failed to export debug audio", e)
-        }
-
         return outFile
     }
 
@@ -427,31 +376,18 @@ class MainActivity : FlutterActivity() {
         val header = ByteArray(44)
         val buffer = ByteBuffer.wrap(header).order(ByteOrder.LITTLE_ENDIAN)
 
-        // ChunkID "RIFF"
         buffer.put("RIFF".toByteArray(Charsets.US_ASCII))
-        // ChunkSize
         buffer.putInt(totalDataLen)
-        // Format "WAVE"
         buffer.put("WAVE".toByteArray(Charsets.US_ASCII))
-        // Subchunk1ID "fmt "
         buffer.put("fmt ".toByteArray(Charsets.US_ASCII))
-        // Subchunk1Size 16 for PCM
         buffer.putInt(16)
-        // AudioFormat 1 for PCM
         buffer.putShort(1)
-        // NumChannels
         buffer.putShort(channels.toShort())
-        // SampleRate
         buffer.putInt(sampleRate)
-        // ByteRate
         buffer.putInt(byteRate)
-        // BlockAlign
         buffer.putShort(blockAlign.toShort())
-        // BitsPerSample
         buffer.putShort(bitsPerSample.toShort())
-        // Subchunk2ID "data"
         buffer.put("data".toByteArray(Charsets.US_ASCII))
-        // Subchunk2Size
         buffer.putInt(pcmDataSize)
 
         outputStream.write(header, 0, 44)

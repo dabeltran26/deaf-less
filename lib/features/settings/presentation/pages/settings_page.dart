@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../../../../core/preferences/sound_preferences.dart';
 import '../../../../core/constants/app_strings.dart';
+import '../../../monitoring/presentation/cubit/monitoring_cubit.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -13,11 +14,19 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   late final SoundPreferencesRepository repo;
+  late final MonitoringCubit _cubit;
 
   @override
   void initState() {
     super.initState();
     repo = SoundPreferencesRepository(Hive.box('preferences'));
+    _cubit = MonitoringCubit();
+  }
+
+  @override
+  void dispose() {
+    _cubit.close();
+    super.dispose();
   }
 
   @override
@@ -67,9 +76,15 @@ class _SettingsPageState extends State<SettingsPage> {
                   enabled: enabled.contains(sound.id),
                   onChanged: (v) async {
                     await repo.toggle(sound.id, v);
+                    // Send updated enabled sound IDs to Kotlin side
+                    _cubit.enabledSoundIds = repo.enabledSoundIds;
+                    await _cubit.sendEnabledSoundIds(_cubit.enabledSoundIds);
                   },
                   onDelete: () async {
                     await repo.removeSound(sound.id);
+                    // Send updated enabled sound IDs to Kotlin side
+                    _cubit.enabledSoundIds = repo.enabledSoundIds;
+                    await _cubit.sendEnabledSoundIds(_cubit.enabledSoundIds);
                   },
                 ),
             ],

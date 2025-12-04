@@ -50,7 +50,7 @@ class MonitoringForegroundService : Service() {
 
             return NotificationCompat.Builder(context, CHANNEL_ID)
                 .setSmallIcon(R.mipmap.ic_launcher)
-                .setContentTitle("Escuchando alertas")
+                .setContentTitle("Listening to alerts")
                 .setContentText(content)
                 .setStyle(NotificationCompat.BigTextStyle().bigText(content))
                 .setOngoing(true)
@@ -65,7 +65,7 @@ class MonitoringForegroundService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val action = intent?.action
-        val content = intent?.getStringExtra(EXTRA_CONTENT) ?: "No hay novedades :D"
+        val content = intent?.getStringExtra(EXTRA_CONTENT) ?: "Nothing"
         when (action) {
             ACTION_START -> {
                 val notification = buildNotification(this, content)
