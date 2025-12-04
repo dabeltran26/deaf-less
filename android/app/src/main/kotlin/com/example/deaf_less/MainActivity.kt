@@ -245,6 +245,12 @@ class MainActivity : FlutterActivity() {
                         null
                     }
 
+                    val detectedCategoryLabel = if (firstMatch != null && firstMatch.score >= 0.6) {
+                        firstMatch.category.label
+                    } else {
+                        null
+                    }
+
                     val bestCategoryId = if (detectedCategoryId != null && enabledSoundIds.contains(detectedCategoryId)) {
                         detectedCategoryId
                     } else {
@@ -256,7 +262,7 @@ class MainActivity : FlutterActivity() {
 
                     val updateIntent = Intent(this@MainActivity, MonitoringForegroundService::class.java).apply {
                         action = MonitoringForegroundService.ACTION_UPDATE
-                        putExtra(MonitoringForegroundService.EXTRA_CONTENT, bestCategoryId)
+                        putExtra(MonitoringForegroundService.EXTRA_CONTENT, detectedCategoryLabel)
                     }
                     withContext(Dispatchers.Main) {
                         startService(updateIntent)
@@ -322,7 +328,7 @@ class MainActivity : FlutterActivity() {
             minBuffer
         )
         if (rec.state != AudioRecord.STATE_INITIALIZED) {
-            Log.e("Audio", "AudioRecord no inicializado")
+            Log.e("Audio", "AudioRecord not initialized")
             return null
         }
 
