@@ -308,7 +308,7 @@ class MainActivity : FlutterActivity() {
                 Log.e("MainActivity", "Error copying decoder model", e)
             }
         }
-        val encoderBytes = assets.open("flutter_assets/assets/effb2_encoder_preprocess.onnx").readBytes()
+        val encoderBytes = assets.open("flutter_assets/assets/effb2_encoder_preprocess-2.onnx").readBytes()
         audioCaptioningProcessor.initializeModels(encoderBytes, decoderFile.absolutePath)
     }
 

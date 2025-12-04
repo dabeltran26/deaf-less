@@ -1,5 +1,8 @@
 # Deaf Less
 
+## Elevator Pitch
+**"Your ears, amplified by AI — Deaf Less transforms critical sounds into instant vibration alerts, empowering people with hearing challenges to stay connected to the world around them."**
+
 Hearing safety assistant built with Flutter. The app monitors the environment in the background and sends alerts when it detects sounds you have configured as important.
 
 ## Features
@@ -12,6 +15,33 @@ Hearing safety assistant built with Flutter. The app monitors the environment in
 - Flutter `>=3.x` and Dart installed.
 - Android device with ARM architecture (iOS currently not supported).
 - Permissions: microphone (required) and notifications (Android).
+
+## Download AI Models
+
+**IMPORTANT**: The AI models are too large to include in the GitHub repository. You must download them manually before running the app.
+
+Since the app works **100% offline** with on-device processing (no internet connection required after setup), the models need to be available locally.
+
+### Download Instructions
+
+1. Visit the Hugging Face model repository: [https://huggingface.co/stiv14/audio-caption-categorizer-model](https://huggingface.co/stiv14/audio-caption-categorizer-model)
+
+2. Download the following three model files:
+   - `effb2_decoder_5sec.pte` (~15 MB)
+   - `effb2_encoder_preprocess-2.onnx` (~31 MB)
+   - `sentence_transformers_minilm.pte` (~90 MB)
+
+3. Place all three files in the `assets/` folder of this project:
+   ```
+   deaf-less/
+   ├── assets/
+   │   ├── effb2_decoder_5sec.pte
+   │   ├── effb2_encoder_preprocess-2.onnx
+   │   ├── sentence_transformers_minilm.pte
+   │   └── ... (other existing files)
+   ```
+
+> **Note**: These models enable audio captioning and semantic categorization entirely on your device. No audio data is sent to external servers.
 
 ## Install and run
 ```bash

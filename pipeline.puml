@@ -1,0 +1,120 @@
+@startuml Deaf-Less Audio Processing Pipeline
+
+skinparam backgroundColor #FFFFFF
+skinparam sequenceMessageAlign center
+skinparam boxPadding 10
+
+title Deaf-Less: Audio Caption → Categorization → Notification Pipeline
+
+actor User
+participant "MainActivity\n(Kotlin)" as Main
+participant "AudioRecord\nAPI" as Audio
+participant "ONNX Encoder\n(30.9 MB)" as Encoder
+participant "ExecuTorch Decoder\n(15.1 MB)" as Decoder
+participant "AudioCaps\nTokenizer" as ACTokenizer
+participant "BERT\nTokenizer" as BERTTokenizer
+participant "Sentence Transformer\n(90.4 MB)" as STModel
+participant "Category\nMatcher" as Matcher
+participant "Android\nNotification" as Notif
+
+== Initialization ==
+User -> Main: Start Monitoring
+activate Main
+Main -> Main: Load models from assets/
+Main -> Matcher: Load category_embeddings.json\n(10 categories)
+Main -> Audio: Start AudioRecord
+
+== Continuous Processing Loop ==
+
+loop Every ~7 seconds
+
+  group Audio Capture (5 seconds)
+    Audio -> Audio: Record 32kHz audio\n160,000 samples
+    Audio -> Main: WAV bytes
+    Main -> Main: Convert to FloatArray\n[1, 160000]
+  end
+
+  group Stage 1: Audio Captioning
+    Main -> Encoder: Float audio [1, 160000]
+    activate Encoder
+    note right of Encoder
+      **ONNX Runtime**
+      • STFT + Mel Spectrogram
+      • EfficientNet-B2 feature extraction
+    end note
+    Encoder -> Encoder: Generate embeddings
+    Encoder --> Main: Attention embeddings\n[1, 16, 1408]
+    deactivate Encoder
+    
+    Main -> Main: Adaptive downsampling\n(if needed: 32→16 timesteps)
+    
+    Main -> Decoder: word_ids + attn_emb + attn_emb_len
+    activate Decoder
+    note right of Decoder
+      **ExecuTorch**
+      • Transformer decoder
+      • Autoregressive generation
+      • Max 30 tokens
+    end note
+    
+    loop Until EOS or max_length
+      Decoder -> Decoder: Generate next token
+    end
+    
+    Decoder --> Main: Token IDs [1, 2, 345, 678, ...]
+    deactivate Decoder
+    
+    Main -> ACTokenizer: Decode token IDs
+    ACTokenizer --> Main: "a dog is barking"
+  end
+
+  group Stage 2: Semantic Categorization
+    Main -> BERTTokenizer: Tokenize caption
+    BERTTokenizer --> Main: input_ids + attention_mask
+    
+    Main -> STModel: input_ids, attention_mask
+    activate STModel
+    note right of STModel
+      **ExecuTorch**
+      • MiniLM-L6-v2
+      • Mean pooling
+      • L2 normalization
+    end note
+    STModel -> STModel: Generate embedding
+    STModel --> Main: Embedding vector [384-dim]
+    deactivate STModel
+    
+    Main -> Matcher: Compare embedding
+    activate Matcher
+    Matcher -> Matcher: Compute cosine similarity\nwith 10 categories
+    Matcher -> Matcher: Sort by score
+    Matcher --> Main: Top match:\n"dog_bark" (score: 0.87)
+    deactivate Matcher
+  end
+
+  group Stage 3: User Filtering & Notification
+    alt Score >= 0.6 AND category enabled
+      Main -> Main: Check if "dog_bark"\nin enabledSoundIds
+      Main -> Notif: Update notification\n"Detected: Bark of a dog"
+      Main -> Notif: Trigger vibration
+      Notif -> User: Vibrate + Notification
+      note right of User
+        User receives alert
+        for enabled sound
+      end note
+    else Score < 0.6 OR not enabled
+      Main -> Main: Ignore detection
+      note right of Main
+        • Low confidence, OR
+        • User hasn't enabled this sound
+      end note
+    end
+  end
+
+  Main -> Main: Wait ~500ms\n(battery optimization)
+
+end
+
+deactivate Main
+
+@enduml
