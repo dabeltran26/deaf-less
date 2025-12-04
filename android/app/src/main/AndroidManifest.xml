@@ -4,6 +4,7 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.VIBRATE" />
     <!-- Android 13+ notifications permission -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <application

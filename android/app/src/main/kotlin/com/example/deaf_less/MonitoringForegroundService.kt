@@ -8,8 +8,12 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import androidx.core.app.NotificationCompat
 import android.app.Service
+import android.util.Log
 
 class MonitoringForegroundService : Service() {
 
@@ -31,7 +35,7 @@ class MonitoringForegroundService : Service() {
                     CHANNEL_NAME,
                     NotificationManager.IMPORTANCE_LOW
                 )
-                channel.description = "Notificación persistente del monitoreo de sonidos"
+                channel.description = "Persistent notification of sound monitoring\n"
                 manager.createNotificationChannel(channel)
             }
         }
@@ -75,17 +79,51 @@ class MonitoringForegroundService : Service() {
                 val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                 val notification = buildNotification(this, content)
                 manager.notify(NOTIFICATION_ID, notification)
+
+                if (content != "Nothing") {
+                    vibrateDevice()
+                }
             }
             ACTION_STOP -> {
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
             }
             else -> {
-                // Default to start if action is missing
                 val notification = buildNotification(this, content)
                 startForeground(NOTIFICATION_ID, notification)
             }
         }
         return START_STICKY
+    }
+
+    private fun vibrateDevice() {
+        try {
+            val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val vibratorManager = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
+                vibratorManager.defaultVibrator
+            } else {
+                @Suppress("DEPRECATION")
+                getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+            }
+
+            if (vibrator.hasVibrator()) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    val pattern = longArrayOf(0, 200, 100, 200)
+                    val amplitudes = intArrayOf(0, 255, 0, 255)
+
+                    val vibrationEffect = VibrationEffect.createWaveform(pattern, amplitudes, -1)
+                    vibrator.vibrate(vibrationEffect)
+                } else {
+                    @Suppress("DEPRECATION")
+                    val pattern = longArrayOf(0, 200, 100, 200)
+                    vibrator.vibrate(pattern, -1)
+                }
+                Log.d("Vibration", "Device vibrated")
+            } else {
+                Log.w("Vibration", "Device does not have vibrator")
+            }
+        } catch (e: Exception) {
+            Log.e("Vibration", "Error vibrating device", e)
+        }
     }
 }
