@@ -19,6 +19,7 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
+import kotlinx.coroutines.*
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
@@ -36,6 +37,14 @@ class MainActivity : FlutterActivity() {
     private var eventSink: EventChannel.EventSink? = null
     private var enabledSoundIds: List<String> = emptyList()
 
+    // Variables para cargar los modelos una sola vez
+    private var tokenizer: AudioCapsTokenizer? = null
+    private var bertTokenizer: BertTokenizer? = null
+    private var embeddingModel: SentenceTransformerEmbeddingModel? = null
+    private var categoryMatcher: CategoryMatcher? = null
+
+    private val coroutineScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
@@ -47,7 +56,7 @@ class MainActivity : FlutterActivity() {
                         if (started) {
                             val startIntent = Intent(this, MonitoringForegroundService::class.java).apply {
                                 action = MonitoringForegroundService.ACTION_START
-                                putExtra(MonitoringForegroundService.EXTRA_CONTENT, "No a pasado nada :D")
+                                putExtra(MonitoringForegroundService.EXTRA_CONTENT, "Nothing")
                             }
                             ContextCompat.startForegroundService(this, startIntent)
                             result.success(true)
@@ -86,13 +95,16 @@ class MainActivity : FlutterActivity() {
             .setStreamHandler(object : EventChannel.StreamHandler {
                 @RequiresPermission(Manifest.permission.RECORD_AUDIO)
                 override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                    Log.d("EventChannel", "onListen called")
                     eventSink = events
-                    if (isStarted) startAudioStream()
+                    // NO llamar startAudioStream aquí, solo asignar el sink
                 }
 
                 override fun onCancel(arguments: Any?) {
+                    Log.d("EventChannel", "onCancel called")
                     eventSink = null
-                    stopAudioStream()
+                    // NO detener el audio aquí, solo limpiar el eventSink
+                    // El monitoreo se controla desde startMonitoring/stopMonitoring
                 }
             })
     }
@@ -106,105 +118,188 @@ class MainActivity : FlutterActivity() {
 
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     private fun startAudioStream(): Boolean {
-        if (isStarted) return true
+        if (isStarted) {
+            Log.d("Audio", "Audio stream already started")
+            return true
+        }
         audioCaptioningProcessor = AudioCaptioningProcessor()
         if (!hasAudioPermission()) return false
+
+        isStarted = true  // Mover ANTES de startAudioAnalyzer
+        Log.d("Audio", "isStarted set to TRUE")
         startAudioAnalyzer()
-        isStarted = true
         return true
     }
 
     private fun stopAudioStream() {
+        Log.d("Audio", "stopAudioStream called, setting isStarted to FALSE")
         isStarted = false
     }
 
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     private fun startAudioAnalyzer() {
-        initializeModels()
-        analyzerAudio()
+        Log.d("Audio", "startAudioAnalyzer called, isStarted = $isStarted")
+        // Inicializar modelos en background
+        coroutineScope.launch(Dispatchers.IO) {
+            try {
+                initializeModels()
+                initializeTokenizers()
+
+                // Una vez inicializados, comenzar el análisis
+                withContext(Dispatchers.Main) {
+                    Log.d("Audio", "Models initialized, starting analyzerAudio loop, isStarted = $isStarted")
+                    analyzerAudio()
+                }
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Error initializing models", e)
+            }
+        }
+    }
+
+    private fun initializeTokenizers() {
+        if (tokenizer == null) {
+            assets.open("flutter_assets/assets/tokenizer-effb2.json").use { tokenizerInputStream ->
+                tokenizer = AudioCapsTokenizer(this, tokenizerInputStream)
+            }
+            Log.d("Tokenizer", "AudioCaps tokenizer loaded successfully.")
+        }
+
+        if (bertTokenizer == null) {
+            bertTokenizer = BertTokenizer(this)
+            assets.open("flutter_assets/assets/tokenizer-sentence_transformers.json")
+                .use { bertTokenizerStream ->
+                    bertTokenizer?.loadTokenizer(bertTokenizerStream)
+                }
+            Log.d("Tokenizer", "BERT tokenizer loaded successfully.")
+        }
+
+        if (embeddingModel == null) {
+            embeddingModel = SentenceTransformerEmbeddingModel(this)
+            val embeddingModelFile = File(filesDir, "sentence_transformers_minilm.pte")
+            if (!embeddingModelFile.exists()) {
+                assets.open("flutter_assets/assets/sentence_transformers_minilm.pte").use { input ->
+                    FileOutputStream(embeddingModelFile).use { output ->
+                        input.copyTo(output)
+                    }
+                }
+            }
+            embeddingModel?.loadModel(embeddingModelFile.absolutePath)
+            Log.d("Model", "Embedding model loaded successfully.")
+        }
+
+        if (categoryMatcher == null) {
+            categoryMatcher = CategoryMatcher(this)
+            assets.open("flutter_assets/assets/category_embeddings.json").use { categoryStream ->
+                categoryMatcher?.loadCategories(categoryStream)
+            }
+            Log.d("Category", "Category matcher loaded successfully.")
+        }
     }
 
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     private fun analyzerAudio() {
-        val recordedWav = recordFiveSecondsWav()
-        if (recordedWav == null) {
-            Log.e("Audio", "No se pudo grabar el audio")
+        if (!isStarted) {
+            Log.d("Audio", "analyzerAudio called but isStarted is false, stopping")
             return
         }
-        val audioData = recordedWav.inputStream().use { audioInputStream ->
-            AudioUtils.loadWavFile(audioInputStream)
-        }
-        val tokenizer = assets.open("flutter_assets/assets/tokenizer-effb2.json").use { tokenizerInputStream ->
-            AudioCapsTokenizer(this, tokenizerInputStream)
-        }
-        Thread {
+
+        Log.d("Audio", "Starting audio analysis cycle")
+
+        // Mover TODO el proceso al background thread
+        coroutineScope.launch(Dispatchers.IO) {
             try {
+                // Verificar que los modelos estén inicializados
+                if (tokenizer == null || bertTokenizer == null || embeddingModel == null || categoryMatcher == null) {
+                    Log.e("Audio", "Models not initialized yet, waiting...")
+                    delay(1000)
+                    withContext(Dispatchers.Main) {
+                        if (isStarted) analyzerAudio()
+                    }
+                    return@launch
+                }
+
+                // Grabar audio (esto toma 5 segundos)
+                val recordedWav = recordFiveSecondsWav()
+                if (recordedWav == null) {
+                    Log.e("Audio", "No se pudo grabar el audio, reintentando...")
+                    delay(500)
+                    withContext(Dispatchers.Main) {
+                        if (isStarted) analyzerAudio()
+                    }
+                    return@launch
+                }
+
+                Log.d("Audio", "Audio recorded successfully, processing...")
+
+                val audioData = recordedWav.inputStream().use { audioInputStream ->
+                    AudioUtils.loadWavFile(audioInputStream)
+                }
+
                 val tokenIds = audioCaptioningProcessor.generateCaption(audioData)
-                val caption = tokenizer.decode(tokenIds)
-                try {
-                    val bertTokenizer = BertTokenizer(this)
-                    val embeddingModel = SentenceTransformerEmbeddingModel(this)
-                    val categoryMatcher = CategoryMatcher(this)
-                    assets.open("flutter_assets/assets/tokenizer-sentence_transformers.json")
-                        .use { bertTokenizerStream ->
-                            bertTokenizer.loadTokenizer(bertTokenizerStream)
-                        }
+                val caption = tokenizer!!.decode(tokenIds)
 
-                    val embeddingModelFile = File(filesDir, "sentence_transformers_minilm.pte")
-                    if (!embeddingModelFile.exists()) {
-                        assets.open("flutter_assets/assets/sentence_transformers_minilm.pte").use { input ->
-                            FileOutputStream(embeddingModelFile).use { output ->
-                                input.copyTo(output)
-                            }
-                        }
-                    }
-                    embeddingModel.loadModel(embeddingModelFile.absolutePath)
+                Log.d("MainActivity", "Generated Caption: '$caption'")
 
-                    assets.open("flutter_assets/assets/category_embeddings.json").use { categoryStream ->
-                        categoryMatcher.loadCategories(categoryStream)
+                val (inputIds, attentionMask, _) = bertTokenizer!!.encode(caption)
+                val embedding = embeddingModel!!.generateEmbedding(inputIds, attentionMask)
+
+                if (embedding != null) {
+                    val topMatches = categoryMatcher!!.findTopMatches(embedding, topN = 3)
+                    val firstMatch = topMatches.firstOrNull()
+
+                    // Get the category ID from the match
+                    val detectedCategoryId = if (firstMatch != null && firstMatch.score >= 0.6) {
+                        firstMatch.category.id
+                    } else {
+                        null
                     }
 
-                    Log.d("MainActivity", "Generated Caption: '$caption'")
+                    // Filter based on enabledSoundIds
+                    val bestCategoryId = if (detectedCategoryId != null && enabledSoundIds.contains(detectedCategoryId)) {
+                        detectedCategoryId
+                    } else {
+                        "Nothing"
+                    }
 
-                    val (inputIds, attentionMask, _) = bertTokenizer.encode(caption)
-                    val embedding = embeddingModel.generateEmbedding(inputIds, attentionMask)
+                    Log.d("MainActivity", "Top match score: ${firstMatch?.score}, Selected: $bestCategoryId")
+                    Log.d("MainActivity", "Top matches: '$topMatches'")
 
-                    if (embedding != null) {
-                        val topMatches = categoryMatcher.findTopMatches(embedding, topN = 3)
-                        val firstMatch = topMatches.firstOrNull()
-                        
-                        // Get the category ID from the match
-                        val detectedCategoryId = if (firstMatch != null && firstMatch.score >= 0.6) {
-                            firstMatch.category.id
-                        } else {
-                            null
-                        }
-                        
-                        // Filter based on enabledSoundIds
-                        val bestCategoryId = if (detectedCategoryId != null && enabledSoundIds.contains(detectedCategoryId)) {
-                            detectedCategoryId
-                        } else {
-                            "Nothing"
-                        }
-                        Log.d("MainActivity", "Top match score: ${firstMatch?.score}, Selected: $bestCategoryId")
-                        val updateIntent = Intent(this, MonitoringForegroundService::class.java).apply {
-                            action = MonitoringForegroundService.ACTION_UPDATE
-                            putExtra(MonitoringForegroundService.EXTRA_CONTENT, bestCategoryId)
-                        }
-                        Log.d("MainActivity", "Best Category ID: '$topMatches'")
+                    // Actualizar notificación
+                    val updateIntent = Intent(this@MainActivity, MonitoringForegroundService::class.java).apply {
+                        action = MonitoringForegroundService.ACTION_UPDATE
+                        putExtra(MonitoringForegroundService.EXTRA_CONTENT, bestCategoryId)
+                    }
+                    withContext(Dispatchers.Main) {
                         startService(updateIntent)
+                    }
+                } else {
+                    Log.e("Category", "Failed to generate embedding")
+                }
+
+                Log.d("Audio", "Analysis complete, scheduling next cycle")
+
+                // Continuar con el siguiente análisis (siempre)
+                withContext(Dispatchers.Main) {
+                    if (isStarted) {
                         analyzerAudio()
                     } else {
-                        Log.e("Category", "Failed to generate embedding")
+                        Log.d("Audio", "isStarted is false, stopping loop")
                     }
-                } catch (e: Exception) {
-                    Log.e("Category", "Categorization error", e)
-                    e.printStackTrace()
                 }
             } catch (e: Exception) {
+                Log.e("Audio", "Error in analysis cycle", e)
                 e.printStackTrace()
+
+                // Reintentar incluso si hay error
+                delay(500)
+                withContext(Dispatchers.Main) {
+                    if (isStarted) {
+                        Log.d("Audio", "Retrying after error...")
+                        analyzerAudio()
+                    }
+                }
             }
-        }.start()
+        }
     }
 
     private fun initializeModels() {
@@ -286,7 +381,7 @@ class MainActivity : FlutterActivity() {
                     put(MediaStore.Downloads.MIME_TYPE, "audio/wav")
                     put(MediaStore.Downloads.RELATIVE_PATH, "Download/")
                 }
-                
+
                 val uri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
                 uri?.let {
                     contentResolver.openOutputStream(it)?.use { outputStream ->
@@ -360,6 +455,11 @@ class MainActivity : FlutterActivity() {
         buffer.putInt(pcmDataSize)
 
         outputStream.write(header, 0, 44)
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        coroutineScope.cancel()
     }
 
     object AudioUtils {
