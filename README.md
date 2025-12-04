@@ -1,16 +1,56 @@
-# deaf_less
+# Deaf Less
 
-A new Flutter project.
+Hearing safety assistant built with Flutter. The app monitors the environment in the background and sends alerts when it detects sounds you have configured as important.
 
-## Getting Started
+## Features
+- 24/7 monitoring: background listening without interrupting other activities.
+- Smart alerts: instant notifications when selected sounds are detected.
+- Fully configurable: enable only the sounds that matter to you.
+- On-device detection: processing happens locally; audio is not sent to servers.
 
-This project is a starting point for a Flutter application.
+## Requirements
+- Flutter `>=3.x` and Dart installed.
+- Android device with ARM architecture (iOS currently not supported).
+- Permissions: microphone (required) and notifications (Android).
 
-A few resources to get you started if this is your first Flutter project:
+## Install and run
+```bash
+# Install dependencies
+flutter pub get
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+# Run on an Android device/emulator
+flutter run -d android
+```
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Project structure
+- `lib/`: main source code (`go_router` for navigation, `flutter_bloc` for state, `hive` for preferences).
+- `assets/`: local files and models for on-device processing.
+- `android/` and `ios/`: platform-specific native configuration.
+
+## Configuration and permissions
+- The app will request microphone permission when starting listening.
+- On Android, notification permission is also requested for alerts.
+- On unsupported devices (non-ARM or non-Android), a notice is shown and listening is disabled.
+
+## Release build (Android)
+```bash
+# Generate release APK
+flutter build apk --release
+
+# Generate App Bundle for Play Store
+flutter build appbundle --release
+```
+
+## Privacy
+- Audio is not uploaded or transmitted off the device.
+- Local preferences (`Hive`) store your sound configuration.
+
+## Contributing
+- Issues and PRs are welcome to improve compatibility and features.
+- Before contributing, run tests:
+```bash
+flutter test
+```
+
+## License
+This project is distributed under a **Non-Commercial Open Use** license. See the `LICENSE` file for full terms and conditions.
